@@ -182,6 +182,16 @@ const DEFAULT_DUNIYA_FIELDS = [
   { key: "phoneOffBy11", label: "রাত ১১টার মধ্যে ফোন/ইন্টারনেট বন্ধ", shortLabel: "১১টায় ফোন অফ", type: "bool" },
 ];
 
+const MEETING_QUESTIONS = [
+  "১. এই মাসে কি কি ভুল ও অন্যায় কাজ হয়েছে?",
+  "২. এই মাসে পারিবারিক কাজগুলোর মধ্যে কোনগুলো অগ্রগতি হয়েছে?",
+  "৩. এই মাসে অর্থনৈতিক অগ্রগতি কেমন ছিল?",
+  "৪. এই মাসে স্বাস্থ্য বা শারীরিক ফিটনেসের অবস্থা কেমন ছিল?",
+  "৫. বাচ্চাদের বা পরিবারের মানসিক ও পড়ালেখার অবস্থা কেমন ছিল?",
+  "৬. আগামী মাসের মূল ৩টি প্রধান লক্ষ্য কি কি?",
+  "৭. আগামী মাসের জন্য পারস্পরিক সিদ্ধান্ত ও পরামর্শ:"
+];
+
 function fieldApplies(field, member) {
   if (!field.appliesTo) return true;
   if (!member || !member.gender) return true;
@@ -283,6 +293,20 @@ function calculateStreak(monthEntries, member, allFields) {
 function weeklyKey(memberId, year, month0) {
   return `weekly:${memberId}:${monthPrefix(year, month0)}`;
 }
+function meetingKey(year, month0) {
+  return `meeting:${monthPrefix(year, month0)}`;
+}
+
+async function loadMeetingData(year, month0) {
+  try {
+    const res = await appStorage.get(meetingKey(year, month0), true);
+    return res ? JSON.parse(res.value) : {};
+  } catch { return {}; }
+}
+async function saveMeetingData(year, month0, data) {
+  await appStorage.set(meetingKey(year, month0), JSON.stringify(data), true);
+}
+
 async function loadWeekly(memberId, year, month0) {
   try {
     const res = await appStorage.get(weeklyKey(memberId, year, month0), true);
@@ -498,20 +522,21 @@ function App() {
   const [entry, setEntry] = useState({});
   const [saving, setSaving] = useState(false);
   const [savedTick, setSavedTick] = useState(false);
-  const [loadingEntry, setLoadingEntry] = useState(false);
 
   const [monthCursor, setMonthCursor] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month0: d.getMonth() };
   });
   const [monthEntries, setMonthEntries] = useState({});
-  const [loadingMonth, setLoadingMonth] = useState(false);
   const [printMode, setPrintMode] = useState(false);
 
   const [weekly, setWeekly] = useState({});
-  const [loadingWeekly, setLoadingWeekly] = useState(false);
   const [savingWeekly, setSavingWeekly] = useState(false);
   const [weeklySavedTick, setWeeklySavedTick] = useState(false);
+
+  const [meetingData, setMeetingData] = useState({});
+  const [savingMeeting, setSavingMeeting] = useState(false);
+  const [meetingSavedTick, setMeetingSavedTick] = useState(false);
 
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [inputCode, setInputCode] = useState("");
@@ -547,19 +572,15 @@ function App() {
 
   useEffect(() => {
     if (!selectedId) return;
-    setLoadingEntry(true);
     loadEntry(selectedId, dateKey(viewDate)).then((data) => {
       setEntry(data || {});
-      setLoadingEntry(false);
     });
   }, [selectedId, viewDate]);
 
   const refreshMonth = useCallback(() => {
     if (!selectedId) return;
-    setLoadingMonth(true);
     loadMonthEntries(selectedId, monthCursor.year, monthCursor.month0).then((data) => {
       setMonthEntries(data);
-      setLoadingMonth(false);
     });
   }, [selectedId, monthCursor]);
 
@@ -569,16 +590,20 @@ function App() {
 
   const refreshWeekly = useCallback(() => {
     if (!selectedId) return;
-    setLoadingWeekly(true);
     loadWeekly(selectedId, monthCursor.year, monthCursor.month0).then((data) => {
       setWeekly(data);
-      setLoadingWeekly(false);
     });
   }, [selectedId, monthCursor]);
 
   useEffect(() => {
     refreshWeekly();
   }, [refreshWeekly]);
+
+  useEffect(() => {
+    loadMeetingData(monthCursor.year, monthCursor.month0).then((data) => {
+      setMeetingData(data);
+    });
+  }, [monthCursor]);
 
   // Export JSON Backup
   async function handleExportData() {
@@ -638,6 +663,14 @@ function App() {
     setSavingWeekly(false);
     setWeeklySavedTick(true);
     setTimeout(() => setWeeklySavedTick(false), 1600);
+  }
+
+  async function handleSaveMeeting() {
+    setSavingMeeting(true);
+    await saveMeetingData(monthCursor.year, monthCursor.month0, meetingData);
+    setSavingMeeting(false);
+    setMeetingSavedTick(true);
+    setTimeout(() => setMeetingSavedTick(false), 1600);
   }
 
   async function handleAddCustomField() {
@@ -708,7 +741,7 @@ function App() {
 
   if (members === null) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" color="#0E4B43" size={28} /></div>;
 
-  // Print Mode PDF Layout
+  // Print Mode PDF Layout (2 Pages Setup)
   if (printMode) {
     const total = monthStats.total;
     const rows = Array.from({ length: total }, (_, i) => i + 1);
@@ -719,25 +752,30 @@ function App() {
             @page { size: A4 landscape; margin: 6mm 6mm 6mm 20mm !important; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff !important; }
             .no-print { display: none !important; }
+            .page-break { page-break-before: always; }
           }
           table { border-collapse: collapse; width: 100%; table-layout: fixed; }
           th, td { border: 1px solid #333; padding: 2px 1px; font-size: 8px; text-align: center; vertical-align: middle; }
-          th { background: #0E4B43 !important; color: #fff !important; font-weight: 600; font-size: 7.5px; height: 40px; white-space: normal !important; word-wrap: break-word !important; }
-          tr { height: 17px; }
+          th { background: #0E4B43 !important; color: #fff !important; font-weight: 600; font-size: 7.5px; height: 38px; white-space: normal !important; word-wrap: break-word !important; }
+          tr { height: 16px; }
           tbody tr:nth-child(even) { background-color: #f8faf7; }
         `}</style>
+        
+        {/* PAGE 1: Monthly Daily Checklist */}
         <div className="p-2 w-full mx-auto" style={{ paddingLeft: "5mm" }}>
           <div className="flex items-center justify-between mb-2 no-print">
             <button onClick={() => setPrintMode(false)} className="px-3 py-1.5 rounded-lg border text-sm font-semibold" style={{ borderColor: "#D8DED3" }}>← ফিরে যান</button>
-            <button onClick={() => window.print()} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}><Printer size={14} /> প্রিন্ট / PDF</button>
+            <button onClick={() => window.print()} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}><Printer size={14} /> প্রিন্ট / PDF (২টি পেজ)</button>
           </div>
+          
           <div style={{ borderBottom: "2px solid #0E4B43", paddingBottom: "4px", marginBottom: "6px" }} className="flex justify-between items-end">
             <div>
-              <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 16, fontWeight: 700, margin: 0, color: "#0E4B43" }}>Daily Task — দ্বীন ও দুনিয়া ট্র্যাকার</h1>
+              <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 16, fontWeight: 700, margin: 0, color: "#0E4B43" }}>Daily Task — দ্বীন ও দুনিয়া ট্র্যাকার (পৃষ্ঠা - ১)</h1>
               <p style={{ fontSize: 10, margin: "2px 0 0 0", color: "#444" }}>মাস: <b>{BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}</b> &nbsp;|&nbsp; সদস্য: <b>{selectedMember?.name}</b></p>
             </div>
             <div style={{ fontSize: 10, textAlign: "right", color: "#333" }}>পূরণ করা দিন: <b>{toBn(monthStats.filled)}/{toBn(total)}</b> &nbsp;|&nbsp; গড় স্কোর: <b>{toBn(monthStats.avgPct)}%</b></div>
           </div>
+          
           <table>
             <thead>
               <tr>
@@ -776,6 +814,35 @@ function App() {
               </tr>
             </tfoot>
           </table>
+        </div>
+
+        {/* PAGE 2: Family Monthly Meeting & Reflection */}
+        <div className="page-break p-2 w-full mx-auto" style={{ paddingLeft: "5mm", paddingTop: "10mm" }}>
+          <div style={{ borderBottom: "2px solid #0E4B43", paddingBottom: "6px", marginBottom: "12px" }} className="flex justify-between items-end">
+            <div>
+              <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 18, fontWeight: 700, margin: 0, color: "#0E4B43" }}>মাসিক পারিবারিক পরামর্শ সভা ও সিদ্ধান্ত (পৃষ্ঠা - ২)</h1>
+              <p style={{ fontSize: 11, margin: "4px 0 0 0", color: "#444" }}>মাস: <b>{BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}</b></p>
+            </div>
+            <div style={{ fontSize: 11, textAlign: "right" }}>
+              উপস্থিত সদস্যগণ: <b>{members.map(m => m.name).join(", ")}</b>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {MEETING_QUESTIONS.map((q, idx) => (
+              <div key={idx} style={{ border: "1px solid #0E4B43", borderRadius: "6px", padding: "6px 10px", background: "#FAFBF8" }}>
+                <div style={{ fontWeight: "700", fontSize: "11px", color: "#0E4B43", marginBottom: "3px" }}>{q}</div>
+                <div style={{ fontSize: "10px", minHeight: "32px", whiteSpace: "pre-wrap", color: "#222" }}>
+                  {meetingData[`q_${idx}`] || "____________________________________________________________________________________"}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: "20px", display: "flex", justifyBetween: "space-between", fontSize: "10px", paddingTop: "10px", borderTop: "1px dashed #ccc" }}>
+            <div>তারিখ: ____/____/________</div>
+            <div>পারিবারিক প্রধানের স্বাক্ষর: ______________________</div>
+          </div>
         </div>
       </div>
     );
@@ -891,7 +958,7 @@ function App() {
           <div className="flex items-center justify-between mb-4">
             <div><div className="text-[10px] text-gray-500">গড় স্কোর</div><div className="text-lg font-bold">{toBn(monthStats.avgPct)}%</div></div>
             <div><div className="text-[10px] text-gray-500">পূরণ করা দিন</div><div className="text-lg font-bold">{toBn(monthStats.filled)}/{toBn(total)}</div></div>
-            <button onClick={() => setPrintMode(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-100 text-emerald-900 border"><Printer size={13} /> PDF / প্রিন্ট</button>
+            <button onClick={() => setPrintMode(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-100 text-emerald-900 border"><Printer size={13} /> PDF / প্রিন্ট (২ পেজ)</button>
           </div>
 
           <ProgressChart monthEntries={monthEntries} totalDays={monthStats.total} member={selectedMember} allFields={allFields} />
@@ -909,6 +976,29 @@ function App() {
               );
             })}
           </div>
+        </div>
+      </div>
+
+      {/* Monthly Family Meeting Notes */}
+      <div className="px-5 mt-8">
+        <h2 className="font-bold mb-3 text-sm" style={{ color: "#16302B" }}>মাসিক পারিবারিক মিটিং ও সিদ্ধান্ত</h2>
+        <div className="bg-white rounded-2xl p-4 space-y-3" style={{ border: "1px solid #E7EEE3" }}>
+          {MEETING_QUESTIONS.map((q, idx) => (
+            <div key={idx} className="space-y-1">
+              <label className="text-xs font-semibold text-emerald-900 block">{q}</label>
+              <textarea
+                value={meetingData[`q_${idx}`] || ""}
+                onChange={(e) => setMeetingData({ ...meetingData, [`q_${idx}`]: e.target.value })}
+                rows={2}
+                placeholder="এখানে উত্তর বা সিদ্ধান্ত লিখুন..."
+                className="w-full rounded-xl border p-2 text-xs outline-none resize-none"
+                style={{ borderColor: "#D8DED3" }}
+              />
+            </div>
+          ))}
+          <button onClick={handleSaveMeeting} className="w-full h-10 rounded-xl font-bold text-white text-xs bg-emerald-900 flex items-center justify-center">
+            {savingMeeting ? <Loader2 className="animate-spin" size={14} /> : meetingSavedTick ? "সেভ হয়েছে!" : "মিটিং মিটিং সিদ্ধান্তের তথ্য সেভ করুন"}
+          </button>
         </div>
       </div>
 
