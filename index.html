@@ -25,7 +25,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
 <style>
-  html, body { background: #F4F7F1; margin: 0; padding: 0; }
+  html, body { background: #F4F7F1; margin: 0; padding: 0; font-family: 'Hind Siliguri', sans-serif; }
+  .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
 </style>
 </head>
 <body>
@@ -131,10 +133,15 @@ function Check({ size, color, className }) { return <Icon size={size} color={col
 function X({ size, color, className }) { return <Icon size={size} color={color} className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>; }
 function User({ size, color, className }) { return <Icon size={size} color={color} className={className}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></Icon>; }
 function CalIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Icon>; }
-function KeyIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><path d="M21 2l-2 2m-1.5 1.5l-3 3m-2 2l-3 3m-2 2l-3 3M3 21l3-3m0 0l2 2m-2-2l-2-2"/></Icon>; }
 function DownloadIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></Icon>; }
 function UploadIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></Icon>; }
 function Trash({ size, color, className }) { return <Icon size={size} color={color} className={className}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></Icon>; }
+function MenuIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></Icon>; }
+function CopyIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></Icon>; }
+function HelpCircle({ size, color, className }) { return <Icon size={size} color={color} className={className}><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></Icon>; }
+function MessageSquare({ size, color, className }) { return <Icon size={size} color={color} className={className}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></Icon>; }
+function UsersIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><path d="M17 21v-2a4 4 0 0 0-3-3.87"/><path d="M9 21v-2a4 4 0 0 1 3-3.87"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><circle cx="16" cy="3.13" r="3"/></Icon>; }
+function ChevronDown({ size, color, className }) { return <Icon size={size} color={color} className={className}><polyline points="6 9 12 15 18 9"/></Icon>; }
 function Loader2({ size, color, className }) {
   return (
     <Icon size={size} color={color} className={className}>
@@ -154,30 +161,31 @@ function useFonts() {
     link.id = id;
     link.rel = "stylesheet";
     link.href =
-      "https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@500;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap";
+      "https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Serif+Bengali:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap";
     document.head.appendChild(link);
   }, []);
 }
 
 const DEFAULT_DEEN_FIELDS = [
-  { key: "fardPrayers", label: "ফরজ কাযা নামাজ (কয়টি?)", shortLabel: "ফরজ কাযা", type: "count", max: 5 },
-  { key: "jamaat", label: "জামাতে নামাজ (কয় ওয়াক্ত?)", shortLabel: "জামাতে নামাজ", type: "count", max: 5, appliesTo: "male" },
+  { key: "fardPrayers", label: "ফরজ কাযা নামাজ (কয় ওয়াক্ত?)", shortLabel: "ফরজ কাযা", type: "count", max: 5 },
+  { key: "jamaat", label: "জামায়াতে নামাজ (কয় ওয়াক্ত?)", shortLabel: "জামায়াতে নামাজ", type: "count", max: 5, appliesTo: "male" },
   { key: "sunnahNafl", label: "সুন্নত/নফল নামাজ", shortLabel: "সুন্নত/নফল", type: "bool" },
-  { key: "tahajjud", label: "তাহাজ্জুদ", shortLabel: "তাহাজ্জুদ", type: "bool" },
-  { key: "dhikr", label: "যিকির/দোয়া", shortLabel: "যিকির/দোয়া", type: "bool" },
-  { key: "quranPages", label: "কুরআন/তাফসীর/আরবি শেখা (পৃষ্ঠা)", shortLabel: "কুরআন/তাফসীর", type: "number", target: 5 },
+  { key: "tahajjud", label: "নফল সিয়াম/ তাহাজ্জুদ", shortLabel: "নফল সিয়াম/তাহাজ্জুদ", type: "bool" },
+  { key: "dhikr", label: "ইস্তেগফার/যিকির/দোয়া", shortLabel: "ইস্তেগফার/যিকির", type: "bool" },
+  { key: "quranPages", label: "কুরআন/তাফসীর ও আরবি শেখা (পৃষ্ঠা)", shortLabel: "কুরআন/তাফসীর", type: "number", target: 5 },
   { key: "seerah", label: "সীরাত/জীবনী/ইতিহাস", shortLabel: "সীরাত/জীবনী", type: "bool" },
   { key: "selfStudy", label: "ইলম অর্জন/কোর্সের পড়া", shortLabel: "ইলম অর্জন", type: "bool" },
   { key: "taleem", label: "তালিম/পাঠচক্র", shortLabel: "তালিম/পাঠচক্র", type: "bool" },
-  { key: "sadaqah", label: "সাদাকা/দান", shortLabel: "সাদাকা/দান", type: "bool" },
+  { key: "dawah", label: "দাওয়াহ/দ্বীনের দাওয়াত", shortLabel: "দাওয়াহ", type: "bool" },
+  { key: "sadaqah", label: "দান/সাদাকা/পরোপকার", shortLabel: "দান/সাদাকা", type: "bool" },
 ];
 
 const DEFAULT_DUNIYA_FIELDS = [
   { key: "earlyMorning", label: "ভোরের বরকতময় সময়কে কাজে লাগানো", shortLabel: "ভোরের সময়", type: "bool" },
   { key: "exercise", label: "ব্যায়াম/শরীরচর্চা", shortLabel: "ব্যায়াম", type: "bool" },
   { key: "healthyFood", label: "স্বাস্থ্যকর খাবার", shortLabel: "স্বাস্থ্যকর খাবার", type: "bool" },
-  { key: "familyTime", label: "পরিবারকে সময় দেওয়া", shortLabel: "পরিবারকে সময়", type: "bool" },
-  { key: "screenLimit", label: "সোশ্যাল মিডিয়া/মোবাইল সীমিত (সর্বোচ্চ ১ ঘণ্টা)", shortLabel: "সোশ্যাল মিডিয়া ≤১ঘ", type: "bool" },
+  { key: "familyTime", label: "পরিবার ও নিকট আত্মীয়দের সময় দেওয়া", shortLabel: "পরিবার ও আত্মীয়", type: "bool" },
+  { key: "screenLimit", label: "সোশ্যাল মিডিয়া/মোবাইল সীমিত ব্যবহার", shortLabel: "মোবাইল সীমিত", type: "bool" },
   { key: "noHurtingOthers", label: "অন্যের হক নষ্ট/মনে কষ্ট না দেয়া", shortLabel: "কষ্ট না দেয়া", type: "bool" },
   { key: "noProcrastination", label: "অলসতা/কাজ ফেলে না রাখা", shortLabel: "অলসতা রোধ", type: "bool" },
   { key: "phoneOffBy11", label: "রাত ১১টার মধ্যে ফোন/ইন্টারনেট বন্ধ", shortLabel: "১১টায় ফোন অফ", type: "bool" },
@@ -288,31 +296,6 @@ function meetingKey(year, month0) {
   return `meeting_rows_v2:${monthPrefix(year, month0)}`;
 }
 
-async function loadMeetingData(year, month0) {
-  try {
-    const res = await appStorage.get(meetingKey(year, month0), true);
-    return res ? JSON.parse(res.value) : {
-      meetingSubHeader: `${BN_MONTHS[month0]}'${toBn(year)}`,
-      meetingDate: "",
-      rows: [
-        { id: "1", topic: "", decision: "", person: "" },
-        { id: "2", topic: "", decision: "", person: "" },
-        { id: "3", topic: "", decision: "", person: "" }
-      ]
-    };
-  } catch { 
-    return {
-      meetingSubHeader: `${BN_MONTHS[month0]}'${toBn(year)}`,
-      meetingDate: "",
-      rows: [
-        { id: "1", topic: "", decision: "", person: "" },
-        { id: "2", topic: "", decision: "", person: "" },
-        { id: "3", topic: "", decision: "", person: "" }
-      ]
-    };
-  }
-}
-
 async function saveMeetingData(year, month0, data) {
   await appStorage.set(meetingKey(year, month0), JSON.stringify(data), true);
 }
@@ -388,7 +371,7 @@ function BoolToggle({ value, onChange, disabled }) {
       type="button"
       disabled={disabled}
       onClick={() => onChange(!value)}
-      className="flex items-center justify-center w-11 h-11 rounded-xl border-2 transition-all shrink-0"
+      className="flex items-center justify-center w-11 h-11 rounded-xl border-2 transition-all shrink-0 shadow-sm"
       style={{
         borderColor: value ? "#0E4B43" : "#D8DED3",
         background: value ? "#0E4B43" : "#FFFFFF",
@@ -402,24 +385,24 @@ function BoolToggle({ value, onChange, disabled }) {
 function CountStepper({ value, onChange, max, disabled }) {
   const v = Number(value) || 0;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
       <button
         type="button"
         disabled={disabled}
         onClick={() => onChange(Math.max(0, v - 1))}
-        className="w-8 h-8 rounded-lg border flex items-center justify-center text-lg"
+        className="w-8 h-8 rounded-lg bg-white border flex items-center justify-center text-lg font-bold shadow-sm"
         style={{ borderColor: "#D8DED3", color: "#16302B" }}
       >
         −
       </button>
-      <span className="w-8 text-center font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}>
+      <span className="w-8 text-center font-bold text-sm" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}>
         {toBn(v)}
       </span>
       <button
         type="button"
         disabled={disabled}
         onClick={() => onChange(Math.min(max, v + 1))}
-        className="w-8 h-8 rounded-lg border flex items-center justify-center text-lg"
+        className="w-8 h-8 rounded-lg bg-white border flex items-center justify-center text-lg font-bold shadow-sm"
         style={{ borderColor: "#D8DED3", color: "#16302B" }}
       >
         +
@@ -430,7 +413,7 @@ function CountStepper({ value, onChange, max, disabled }) {
 
 function NumberField({ value, onChange, disabled, target }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1.5">
       <input
         type="number"
         min="0"
@@ -439,11 +422,11 @@ function NumberField({ value, onChange, disabled, target }) {
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         placeholder="০"
-        className="w-16 h-9 rounded-lg border px-2 text-right outline-none"
+        className="w-16 h-9 rounded-xl border px-2 text-right outline-none font-bold text-sm bg-slate-50 focus:bg-white transition-all"
         style={{ borderColor: "#D8DED3", fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}
       />
       {target ? (
-        <span className="text-xs" style={{ color: "#8A9A8F", fontFamily: "'IBM Plex Mono', monospace" }}>
+        <span className="text-xs font-semibold" style={{ color: "#8A9A8F", fontFamily: "'IBM Plex Mono', monospace" }}>
           /{toBn(target)}
         </span>
       ) : null}
@@ -522,7 +505,6 @@ function App() {
   const [addingMember, setAddingMember] = useState(false);
   const [newName, setNewName] = useState("");
   const [newGender, setNewGender] = useState("male");
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const [customFields, setCustomFields] = useState([]);
   const [newCustomLabel, setNewCustomLabel] = useState("");
@@ -552,8 +534,12 @@ function App() {
   const [savingMeeting, setSavingMeeting] = useState(false);
   const [meetingSavedTick, setMeetingSavedTick] = useState(false);
 
-  const [showCodeModal, setShowCodeModal] = useState(false);
-  const [inputCode, setInputCode] = useState("");
+  // MENU & MODALS STATE
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState("");
+  const [copiedCode, setCopiedCode] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -613,10 +599,31 @@ function App() {
     refreshWeekly();
   }, [refreshWeekly]);
 
+  // REAL-TIME AUTO-SYNC FOR FAMILY MEETING DATA
   useEffect(() => {
-    loadMeetingData(monthCursor.year, monthCursor.month0).then((data) => {
-      setMeetingState(data);
+    const docKey = meetingKey(monthCursor.year, monthCursor.month0);
+    const docRef = db.collection(getCollectionName()).doc(docKey);
+
+    const unsubscribe = docRef.onSnapshot((doc) => {
+      if (doc.exists) {
+        try {
+          const data = JSON.parse(doc.data().value);
+          setMeetingState(data);
+        } catch (e) {}
+      } else {
+        setMeetingState({
+          meetingSubHeader: `${BN_MONTHS[monthCursor.month0]}'${toBn(monthCursor.year)}`,
+          meetingDate: "",
+          rows: [
+            { id: "1", topic: "", decision: "", person: "" },
+            { id: "2", topic: "", decision: "", person: "" },
+            { id: "3", topic: "", decision: "", person: "" }
+          ]
+        });
+      }
     });
+
+    return () => unsubscribe();
   }, [monthCursor]);
 
   async function handleExportData() {
@@ -661,6 +668,20 @@ function App() {
     }
   }
 
+  function handleCopyCode() {
+    navigator.clipboard.writeText(getFamilyCode());
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  }
+
+  function handleSendFeedback() {
+    if (!feedbackMsg.trim()) return;
+    const mailtoUrl = `mailto:cheletiboka@gmail.com?subject=Daily Task App Feedback (${getFamilyCode()})&body=${encodeURIComponent(feedbackMsg)}`;
+    window.location.href = mailtoUrl;
+    setFeedbackMsg("");
+    setShowFeedbackModal(false);
+  }
+
   function updateWeekly(weekIdx, field, value) {
     setWeekly((prev) => ({
       ...prev,
@@ -668,11 +689,10 @@ function App() {
     }));
   }
 
-  // Dynamic Meeting Row Operations
   function addMeetingRow() {
     setMeetingState(prev => ({
       ...prev,
-      rows: [...prev.rows, { id: String(Date.now()), topic: "", decision: "", person: "" }]
+      rows: [...(prev.rows || []), { id: String(Date.now()), topic: "", decision: "", person: "" }]
     }));
   }
 
@@ -733,16 +753,6 @@ function App() {
     await saveMembers(next);
   }
 
-  async function handleDeleteMember(id) {
-    const next = (members || []).filter((m) => m.id !== id);
-    setMembers(next);
-    setConfirmDeleteId(null);
-    await saveMembers(next);
-    if (selectedId === id) {
-      setSelectedId(next.length ? next[0].id : null);
-    }
-  }
-
   function updateField(key, value) {
     setEntry((prev) => ({ ...prev, [key]: value }));
   }
@@ -775,14 +785,13 @@ function App() {
     return { total, filled, avgPct: Math.round(avg * 100) };
   }, [monthEntries, monthCursor, selectedMember, allFields]);
 
-  if (members === null) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" color="#0E4B43" size={28} /></div>;
+  if (members === null) return <div className="min-h-screen flex items-center justify-center bg-[#F4F7F1]"><Loader2 className="animate-spin" color="#0E4B43" size={32} /></div>;
 
-  // Print Mode PDF Layout (Exact Replica of Image Layout for Page 2)
   if (printMode) {
     const total = monthStats.total;
     const rows = Array.from({ length: total }, (_, i) => i + 1);
     return (
-      <div style={{ fontFamily: "'Noto Sans Bengali', sans-serif", color: "#111" }}>
+      <div style={{ color: "#111" }}>
         <style>{`
           @media print {
             @page { size: A4 landscape; margin: 6mm 6mm 6mm 15mm !important; }
@@ -795,7 +804,6 @@ function App() {
           th { background: #0E4B43 !important; color: #fff !important; font-weight: 600; font-size: 8px; height: 32px; }
           tr { height: 16px; }
 
-          /* Image Match Styles for Page 2 */
           .meeting-table th { background: #fff !important; color: #000 !important; font-size: 13px; font-weight: 700; height: 35px; border: 1px solid #333; }
           .meeting-table td { font-size: 11px; padding: 6px; border: 1px solid #333; text-align: left; }
         `}</style>
@@ -803,7 +811,7 @@ function App() {
         {/* PAGE 1: Monthly Daily Checklist */}
         <div className="p-2 w-full mx-auto">
           <div className="flex items-center justify-between mb-2 no-print">
-            <button onClick={() => setPrintMode(false)} className="px-3 py-1.5 rounded-lg border text-sm font-semibold" style={{ borderColor: "#D8DED3" }}>← ফিরে যান</button>
+            <button onClick={() => setPrintMode(false)} className="px-3 py-1.5 rounded-lg border text-sm font-semibold bg-white" style={{ borderColor: "#D8DED3" }}>← ফিরে যান</button>
             <button onClick={() => window.print()} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}><Printer size={14} /> প্রিন্ট / PDF (২টি পেজ)</button>
           </div>
           
@@ -855,25 +863,21 @@ function App() {
           </table>
         </div>
 
-        {/* PAGE 2: Exact Layout matching Image */}
+        {/* PAGE 2: Family Meeting */}
         <div className="page-break p-4 w-full mx-auto" style={{ paddingTop: "12mm" }}>
-          
-          {/* Header Layout directly matching the image */}
           <div style={{ textAlign: "center", marginBottom: "20px", position: "relative" }}>
             <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 26, fontWeight: 700, margin: 0, color: "#000" }}>
-              পারিবারিক সভা
+              মাসিক পারিবারিক সভা ও সিদ্ধান্ত
             </h1>
             <div style={{ fontSize: 16, marginTop: "4px", color: "#222", fontWeight: "600" }}>
               {meetingState.meetingSubHeader || `${BN_MONTHS[monthCursor.month0]}'${toBn(monthCursor.year)}`}
             </div>
             
-            {/* Top-Right Date Display */}
             <div style={{ position: "absolute", right: "0", top: "15px", fontSize: "14px", fontWeight: "bold", color: "#111" }}>
               {meetingState.meetingDate}
             </div>
           </div>
 
-          {/* Exact 4-column Table matching image header */}
           <table className="meeting-table">
             <thead>
               <tr>
@@ -904,293 +908,459 @@ function App() {
   const leadBlanks = firstOfMonth.getDay();
 
   return (
-    <div className="min-h-screen pb-16" style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}>
+    <div className="min-h-screen pb-20 bg-[#F4F7F1]">
       {/* Top Header */}
-      <div style={{ background: "#0E4B43" }} className="px-5 pt-6 pb-8 relative overflow-hidden">
-        <div className="relative flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <StarMark size={20} />
-            <h1 className="text-xl font-bold" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#F4F7F1" }}>Daily Task</h1>
+      <div style={{ background: "#0E4B43" }} className="px-5 pt-6 pb-9 shadow-md relative">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <StarMark size={22} />
+            <div>
+              <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#F4F7F1" }}>
+                Daily Task
+              </h1>
+              <p className="text-[10px] text-emerald-200/80 -mt-1 font-medium">দ্বীন ও দুনিয়া ট্র্যাকার</p>
+            </div>
           </div>
-          <button onClick={() => setShowCodeModal(true)} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full text-white/80 border border-white/20">
-            <KeyIcon size={12} /> ফ্যামিলি কোড & ব্যাকআপ
-          </button>
+
+          {/* Menu Dropdown Trigger */}
+          <div className="relative">
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-white bg-white/15 hover:bg-white/20 border border-white/20 backdrop-blur-md transition-all shadow-sm active:scale-95"
+            >
+              <MenuIcon size={16} />
+              <span>মেনু</span>
+              <ChevronDown size={14} className={`transition-transform duration-200 ${isMenuOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {/* Structured Dropdown Menu */}
+            {isMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsMenuOpen(false)}></div>
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 text-slate-800 text-xs transition-all">
+                  
+                  <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/70">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ড্যাশবোর্ড</div>
+                    <div className="font-bold text-emerald-900 text-sm flex items-center justify-between mt-0.5">
+                      <span>আপনার ফ্যামিলি</span>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">{getFamilyCode()}</span>
+                    </div>
+                  </div>
+
+                  {/* Group 1: Members */}
+                  <div className="py-1">
+                    <div className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                      <UsersIcon size={12} /> সদস্যবৃন্দ
+                    </div>
+                    <div className="max-h-36 overflow-y-auto custom-scrollbar px-2">
+                      {members.map((m) => (
+                        <div
+                          key={m.id}
+                          onClick={() => { setSelectedId(m.id); setIsMenuOpen(false); }}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer ${m.id === selectedId ? "bg-emerald-50 text-emerald-900 font-bold" : "hover:bg-slate-50 text-slate-700"}`}
+                        >
+                          <span className="flex items-center gap-2"><User size={13} /> {m.name}</span>
+                          {m.id === selectedId && <span className="w-2 h-2 rounded-full bg-emerald-600"></span>}
+                        </div>
+                      ))}
+                    </div>
+                    {!addingMember ? (
+                      <button
+                        onClick={() => { setAddingMember(true); setIsMenuOpen(false); }}
+                        className="w-full text-left px-4 py-1.5 text-emerald-800 font-bold hover:bg-slate-50 flex items-center gap-1.5 mt-1"
+                      >
+                        <Plus size={14} /> নতুন সদস্য যোগ করুন
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="border-t border-slate-100 my-1"></div>
+
+                  {/* Group 2: Data Management */}
+                  <div className="py-1">
+                    <div className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">ডাটা ম্যানেজমেন্ট</div>
+                    <button
+                      onClick={() => { handleCopyCode(); }}
+                      className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center justify-between text-slate-700"
+                    >
+                      <span className="flex items-center gap-2"><CopyIcon size={14} /> ফ্যামিলি কোড কপি করুন</span>
+                      {copiedCode && <span className="text-[10px] text-emerald-600 font-bold">কপি হয়েছে!</span>}
+                    </button>
+                    <button
+                      onClick={() => { handleExportData(); setIsMenuOpen(false); }}
+                      className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                    >
+                      <DownloadIcon size={14} /> ব্যাকআপ ফাইল ডাউনলোড
+                    </button>
+                    <label className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700 cursor-pointer">
+                      <UploadIcon size={14} /> ব্যাকআপ ইম্পোর্ট ফাইল
+                      <input type="file" accept=".json" onChange={(e) => { handleImportData(e); setIsMenuOpen(false); }} className="hidden" />
+                    </label>
+                  </div>
+
+                  <div className="border-t border-slate-100 my-1"></div>
+
+                  {/* Group 3: Help & Feedback */}
+                  <div className="py-1">
+                    <button
+                      onClick={() => { setShowHelpModal(true); setIsMenuOpen(false); }}
+                      className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                    >
+                      <HelpCircle size={14} /> ব্যবহারের নিয়মাবলী
+                    </button>
+                    <button
+                      onClick={() => { setShowFeedbackModal(true); setIsMenuOpen(false); }}
+                      className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700 font-medium text-emerald-800"
+                    >
+                      <MessageSquare size={14} /> আমাদের জানান (পরামর্শ)
+                    </button>
+                  </div>
+
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Continuous Streak Badge */}
-        <div className="mt-3 flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl w-fit">
-          <span className="text-lg">🔥</span>
-          <span className="text-xs font-semibold text-white">ধারাবাহিক স্ট্রিক: {toBn(streak)} দিন</span>
-        </div>
-
-        {/* Member list */}
-        <div className="relative flex gap-2 mt-4 flex-wrap">
-          {members.map((m) =>
-            confirmDeleteId === m.id ? (
-              <div key={m.id} className="px-2.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5 bg-white/20 text-white">
-                <span>{m.name} মুছবেন?</span>
-                <button onClick={() => handleDeleteMember(m.id)} className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center"><Check size={12} /></button>
-                <button onClick={() => setConfirmDeleteId(null)} className="w-5 h-5 rounded-full bg-gray-500 text-white flex items-center justify-center"><X size={12} /></button>
-              </div>
-            ) : (
+        {/* Member Pills */}
+        <div className="flex items-center justify-between mt-4">
+          <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
+            {members.map((m) => (
               <button
                 key={m.id}
                 onClick={() => setSelectedId(m.id)}
-                className="pl-3 pr-1.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5"
-                style={{ background: m.id === selectedId ? "#C89B3C" : "rgba(255,255,255,0.12)", color: m.id === selectedId ? "#16302B" : "#F4F7F1" }}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shrink-0 shadow-sm"
+                style={{
+                  background: m.id === selectedId ? "#C89B3C" : "rgba(255,255,255,0.12)",
+                  color: m.id === selectedId ? "#16302B" : "#F4F7F1",
+                }}
               >
                 <User size={13} /> {m.name}
-                <span onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(m.id); }} className="w-4 h-4 rounded-full flex items-center justify-center bg-black/10"><X size={10} /></span>
               </button>
-            )
-          )}
-          {!addingMember ? (
-            <button onClick={() => setAddingMember(true)} className="px-3 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1 bg-white/10 text-white"><Plus size={14} /> সদস্য</button>
-          ) : (
-            <div className="flex items-center gap-1 bg-white/20 p-1 rounded-full">
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="নাম" className="w-20 px-2 rounded-full text-xs text-black outline-none" />
-              <button onClick={handleAddMember} className="px-2 py-0.5 rounded-full text-xs bg-amber-500 text-black font-bold">যোগ</button>
+            ))}
+          </div>
+          
+          <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-xl shrink-0 border border-white/10">
+            <span className="text-sm">🔥</span>
+            <span className="text-xs font-bold text-white">{toBn(streak)} দিন</span>
+          </div>
+        </div>
+
+        {/* Add Member Quick Input */}
+        {addingMember && (
+          <div className="mt-3 bg-white/10 p-2 rounded-2xl border border-white/20 flex items-center gap-2 backdrop-blur-md">
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="সদস্যের নাম..."
+              className="flex-1 px-3 py-1.5 rounded-xl text-xs text-slate-900 outline-none font-medium"
+            />
+            <select
+              value={newGender}
+              onChange={(e) => setNewGender(e.target.value)}
+              className="px-2 py-1.5 rounded-xl text-xs text-slate-900 bg-white outline-none font-medium"
+            >
+              <option value="male">পুরুষ</option>
+              <option value="female">নারী</option>
+            </select>
+            <button onClick={handleAddMember} className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#C89B3C] text-[#16302B]">যোগ</button>
+            <button onClick={() => setAddingMember(false)} className="p-1.5 text-white/80"><X size={16} /></button>
+          </div>
+        )}
+      </div>
+
+      {/* Main Content Area */}
+      <div className="max-w-2xl mx-auto">
+        
+        {/* Date Selector Card */}
+        <div className="px-5 -mt-4">
+          <div className="bg-white rounded-2xl shadow-sm px-4 py-2.5 flex items-center justify-between border border-slate-200/80">
+            <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() - 1)))} className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-all text-slate-700"><ChevronLeft size={16} /></button>
+            <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
+              <CalIcon size={16} color="#0E4B43" />
+              <span>{toBn(viewDate.getDate())} {BN_MONTHS[viewDate.getMonth()]} {toBn(viewDate.getFullYear())}</span>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Date Navigation Bar */}
-      <div className="px-5 -mt-4">
-        <div className="bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center justify-between" style={{ border: "1px solid #E7EEE3" }}>
-          <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() - 1)))} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100"><ChevronLeft size={16} /></button>
-          <div className="font-semibold text-sm" style={{ color: "#16302B" }}>{toBn(viewDate.getDate())} {BN_MONTHS[viewDate.getMonth()]} {toBn(viewDate.getFullYear())}</div>
-          <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() + 1)))} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100"><ChevronRight size={16} /></button>
-        </div>
-      </div>
-
-      {/* Input Form Fields */}
-      <div className="px-5 mt-5 space-y-4">
-        <FieldGroup title="দ্বীন" fields={DEFAULT_DEEN_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
-        <FieldGroup title="দুনিয়া" fields={DEFAULT_DUNIYA_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
-
-        {/* Custom Tasks */}
-        <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold" style={{ color: "#0E4B43" }}>কাস্টম টাস্ক (ব্যক্তিগত লক্ষ্য)</h3>
-            <button onClick={() => setShowAddCustom(true)} className="text-xs font-semibold text-emerald-800 flex items-center gap-1"><Plus size={12} /> নতুন যোগ করুন</button>
+            <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() + 1)))} className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-all text-slate-700"><ChevronRight size={16} /></button>
           </div>
-          {customFields.map((f) => (
-            <div key={f.key} className="flex items-center justify-between gap-3 py-1.5 border-b last:border-b-0">
-              <span className="text-sm">{f.label}</span>
-              <BoolToggle value={!!entry[f.key]} onChange={(v) => updateField(f.key, v)} />
+        </div>
+
+        {/* Daily Input Checklist */}
+        <div className="px-5 mt-5 space-y-4">
+          <FieldGroup title="দ্বীন" fields={DEFAULT_DEEN_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
+          <FieldGroup title="দুনিয়া" fields={DEFAULT_DUNIYA_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
+
+          {/* Custom Task Card */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-emerald-900">কাস্টম টাস্ক (ব্যক্তিগত লক্ষ্য)</h3>
+              <button onClick={() => setShowAddCustom(true)} className="text-xs font-bold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100"><Plus size={12} /> নতুন টাস্ক</button>
             </div>
-          ))}
-        </div>
-
-        {/* Daily Note */}
-        <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-          <label className="block text-sm font-semibold mb-2" style={{ color: "#16302B" }}>দিনের নোট / আত্ম-সমালোচনা</label>
-          <textarea value={entry.note || ""} onChange={(e) => updateField("note", e.target.value)} rows={2} placeholder="আজকের অনুভূতি বা শিক্ষা লিখুন..." className="w-full rounded-xl border p-2 text-sm outline-none resize-none" style={{ borderColor: "#D8DED3" }} />
-        </div>
-
-        <button onClick={handleSave} className="w-full h-12 rounded-xl font-bold text-white flex items-center justify-center gap-2" style={{ background: savedTick ? "#4C8C74" : "#0E4B43" }}>
-          {saving ? <Loader2 className="animate-spin" size={18} /> : savedTick ? "সেভ হয়েছে!" : "সেভ করুন"}
-        </button>
-      </div>
-
-      {/* Monthly Chart & Overview */}
-      <div className="px-5 mt-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold flex items-center gap-1.5 text-sm" style={{ color: "#16302B" }}><CalIcon size={16} /> মাসিক ওভারভিউ</h2>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setMonthCursor((c) => (c.month0 === 0 ? { year: c.year - 1, month0: 11 } : { year: c.year, month0: c.month0 - 1 }))} className="w-7 h-7 flex items-center justify-center rounded-full bg-white border"><ChevronLeft size={14} /></button>
-            <span className="text-xs font-semibold px-1">{BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}</span>
-            <button onClick={() => setMonthCursor((c) => (c.month0 === 11 ? { year: c.year + 1, month0: 0 } : { year: c.year, month0: c.month0 + 1 }))} className="w-7 h-7 flex items-center justify-center rounded-full bg-white border"><ChevronRight size={14} /></button>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-          <div className="flex items-center justify-between mb-4">
-            <div><div className="text-[10px] text-gray-500">গড় স্কোর</div><div className="text-lg font-bold">{toBn(monthStats.avgPct)}%</div></div>
-            <div><div className="text-[10px] text-gray-500">পূরণ করা দিন</div><div className="text-lg font-bold">{toBn(monthStats.filled)}/{toBn(total)}</div></div>
-            <button onClick={() => setPrintMode(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-100 text-emerald-900 border"><Printer size={13} /> PDF / প্রিন্ট (২ পেজ)</button>
+            {customFields.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-2">কোন কাস্টম টাস্ক নেই। উপরে বোতামে ক্লিক করে যোগ করুন।</p>
+            ) : (
+              customFields.map((f) => (
+                <div key={f.key} className="flex items-center justify-between gap-3 py-2 border-b border-slate-100 last:border-b-0">
+                  <span className="text-sm font-medium text-slate-700">{f.label}</span>
+                  <BoolToggle value={!!entry[f.key]} onChange={(v) => updateField(f.key, v)} />
+                </div>
+              ))
+            )}
           </div>
 
-          <ProgressChart monthEntries={monthEntries} totalDays={monthStats.total} member={selectedMember} allFields={allFields} />
-
-          <div className="grid grid-cols-7 gap-1 mt-4">
-            {BN_WEEKDAYS.map((w) => (<div key={w} className="text-center text-[10px] font-semibold text-gray-400">{w}</div>))}
-            {Array.from({ length: leadBlanks }).map((_, i) => (<div key={"b" + i} />))}
-            {Array.from({ length: total }, (_, i) => i + 1).map((d) => {
-              const e = monthEntries[pad2(d)];
-              const s = dailyScore(e, selectedMember, allFields);
-              return (
-                <button key={d} onClick={() => setViewDate(new Date(monthCursor.year, monthCursor.month0, d))} className="aspect-square rounded-lg flex items-center justify-center text-[11px] font-semibold" style={{ background: scoreColor(s), color: s !== null && s >= 0.35 ? "#fff" : "#555" }}>
-                  {toBn(d)}
-                </button>
-              );
-            })}
+          {/* Reflection Note */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+            <label className="block text-sm font-bold text-slate-800 mb-2">দিনের নোট / আত্ম-সমালোচনা</label>
+            <textarea
+              value={entry.note || ""}
+              onChange={(e) => updateField("note", e.target.value)}
+              rows={2}
+              placeholder="আজকের অনুভূতি, অর্জন বা শেখা বিষয় লিখুন..."
+              className="w-full rounded-xl border border-slate-200 p-2.5 text-xs outline-none focus:border-emerald-700 transition-all resize-none bg-slate-50/50 focus:bg-white"
+            />
           </div>
-        </div>
-      </div>
 
-      {/* FAMILY MEETING SECTION — EXACT MATCH TO IMAGE */}
-      <div className="px-5 mt-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-sm" style={{ color: "#16302B" }}>পারিবারিক সভা (ছক ইনপুট)</h2>
-          <button onClick={addMeetingRow} className="px-2.5 py-1 bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1">
-            <Plus size={12} /> রো (Row) যোগ করুন
+          {/* Save Button */}
+          <button
+            onClick={handleSave}
+            className="w-full h-12 rounded-2xl font-bold text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            style={{ background: savedTick ? "#4C8C74" : "#0E4B43" }}
+          >
+            {saving ? <Loader2 className="animate-spin" size={18} /> : savedTick ? "সেভ হয়েছে!" : "আজকের ডাটা সেভ করুন"}
           </button>
         </div>
 
-        <div className="bg-white rounded-2xl p-4 space-y-4" style={{ border: "1px solid #E7EEE3" }}>
-          
-          {/* Header Subtitle and Date Inputs */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-3 border-b">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1 block">সভার মাস/উপ-শিরোনাম</label>
-              <input
-                type="text"
-                value={meetingState.meetingSubHeader}
-                onChange={(e) => setMeetingState({ ...meetingState, meetingSubHeader: e.target.value })}
-                placeholder="যেমন: ডিসেম্বর'২০২৩ ও জানুয়ারি'২০২৪"
-                className="w-full h-9 rounded-lg border px-2.5 text-xs outline-none"
-                style={{ borderColor: "#D8DED3" }}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1 block">তারিখ (ডানপাশে দেখাবে)</label>
-              <input
-                type="text"
-                value={meetingState.meetingDate}
-                onChange={(e) => setMeetingState({ ...meetingState, meetingDate: e.target.value })}
-                placeholder="যেমন: Jan 7, 2024"
-                className="w-full h-9 rounded-lg border px-2.5 text-xs outline-none"
-                style={{ borderColor: "#D8DED3" }}
-              />
+        {/* Monthly Overview Card */}
+        <div className="px-5 mt-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-bold flex items-center gap-1.5 text-sm text-slate-800"><CalIcon size={16} color="#0E4B43" /> মাসিক ওভারভিউ</h2>
+            <div className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-xl border border-slate-200 shadow-sm">
+              <button onClick={() => setMonthCursor((c) => (c.month0 === 0 ? { year: c.year - 1, month0: 11 } : { year: c.year, month0: c.month0 - 1 }))} className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100"><ChevronLeft size={14} /></button>
+              <span className="text-xs font-bold px-1 text-slate-700">{BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}</span>
+              <button onClick={() => setMonthCursor((c) => (c.month0 === 11 ? { year: c.year + 1, month0: 0 } : { year: c.year, month0: c.month0 + 1 }))} className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100"><ChevronRight size={14} /></button>
             </div>
           </div>
 
-          {/* Dynamic Table Rows */}
-          <div className="space-y-3">
-            {meetingState.rows.map((row, idx) => (
-              <div key={row.id || idx} className="p-3 rounded-xl border bg-slate-50/50 space-y-2 relative" style={{ borderColor: "#E7EEE3" }}>
-                <div className="flex items-center justify-between">
-                  <span className="w-5 h-5 rounded-full bg-emerald-800 text-white text-xs font-bold flex items-center justify-center">
-                    {toBn(idx + 1)}
-                  </span>
-                  {meetingState.rows.length > 1 && (
-                    <button onClick={() => removeMeetingRow(idx)} className="text-red-500 hover:text-red-700">
-                      <Trash size={14} />
-                    </button>
-                  )}
-                </div>
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+              <div><div className="text-[10px] text-slate-400 font-bold">গড় স্কোর</div><div className="text-xl font-bold text-emerald-950">{toBn(monthStats.avgPct)}%</div></div>
+              <div><div className="text-[10px] text-slate-400 font-bold">পূরণ করা দিন</div><div className="text-xl font-bold text-emerald-950">{toBn(monthStats.filled)}/{toBn(total)}</div></div>
+              <button onClick={() => setPrintMode(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-100 hover:bg-emerald-100 transition-all"><Printer size={13} /> PDF / প্রিন্ট (২ পেজ)</button>
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <div>
-                    <input
-                      type="text"
-                      value={row.topic || ""}
-                      onChange={(e) => updateMeetingRow(idx, "topic", e.target.value)}
-                      placeholder="বিষয় লিখুন..."
-                      className="w-full rounded-lg border p-2 text-xs outline-none bg-white font-semibold"
-                      style={{ borderColor: "#D8DED3" }}
-                    />
-                  </div>
-                  <div>
-                    <textarea
-                      value={row.decision || ""}
-                      onChange={(e) => updateMeetingRow(idx, "decision", e.target.value)}
-                      rows={2}
-                      placeholder="কার্যপরিধি/সিদ্ধান্ত লিখুন..."
-                      className="w-full rounded-lg border p-2 text-xs outline-none bg-white resize-none"
-                      style={{ borderColor: "#D8DED3" }}
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      value={row.person || ""}
-                      onChange={(e) => updateMeetingRow(idx, "person", e.target.value)}
-                      placeholder="বাস্তবায়নকারী (নাম)"
-                      className="w-full rounded-lg border p-2 text-xs outline-none bg-white"
-                      style={{ borderColor: "#D8DED3" }}
-                    />
-                  </div>
+            <ProgressChart monthEntries={monthEntries} totalDays={monthStats.total} member={selectedMember} allFields={allFields} />
+
+            <div className="grid grid-cols-7 gap-1 mt-4">
+              {BN_WEEKDAYS.map((w) => (<div key={w} className="text-center text-[10px] font-bold text-slate-400">{w}</div>))}
+              {Array.from({ length: leadBlanks }).map((_, i) => (<div key={"b" + i} />))}
+              {Array.from({ length: total }, (_, i) => i + 1).map((d) => {
+                const e = monthEntries[pad2(d)];
+                const s = dailyScore(e, selectedMember, allFields);
+                return (
+                  <button key={d} onClick={() => setViewDate(new Date(monthCursor.year, monthCursor.month0, d))} className="aspect-square rounded-xl flex items-center justify-center text-[11px] font-bold transition-transform active:scale-90 shadow-sm" style={{ background: scoreColor(s), color: s !== null && s >= 0.35 ? "#fff" : "#555" }}>
+                    {toBn(d)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Family Meeting Table Section */}
+        <div className="px-5 mt-8">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <h2 className="font-bold text-sm text-slate-800">মাসিক পারিবারিক সভা ও সিদ্ধান্ত</h2>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">লাইভ সিংক</span>
+            </div>
+            <button onClick={addMeetingRow} className="px-2.5 py-1 bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-emerald-900 transition-all shadow-sm">
+              <Plus size={12} /> সারি যোগ করুন
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <label className="text-xs font-bold text-slate-600 mb-1 block">সভার মাস/উপ-শিরোনাম</label>
+                <input
+                  type="text"
+                  value={meetingState.meetingSubHeader}
+                  onChange={(e) => setMeetingState({ ...meetingState, meetingSubHeader: e.target.value })}
+                  placeholder="যেমন: ডিসেম্বর'২০২৩ ও জানুয়ারি'২০২৪"
+                  className="w-full h-9 rounded-xl border border-slate-200 px-3 text-xs outline-none font-medium bg-slate-50 focus:bg-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 mb-1 block">তারিখ (ডানপাশে দেখাবে)</label>
+                <input
+                  type="text"
+                  value={meetingState.meetingDate}
+                  onChange={(e) => setMeetingState({ ...meetingState, meetingDate: e.target.value })}
+                  placeholder="যেমন: Jan 7, 2024"
+                  className="w-full h-9 rounded-xl border border-slate-200 px-3 text-xs outline-none font-medium bg-slate-50 focus:bg-white"
+                />
+              </div>
+            </div>
+
+            {/* Table Container with Horizontal Scroll support */}
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full border-collapse min-w-[500px]">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-800 text-xs font-bold border border-slate-200">
+                    <th 
+                      onClick={addMeetingRow}
+                      title="নতুন সারি যোগ করতে ক্লিক করুন"
+                      className="py-2.5 px-2 border-r border-slate-200 text-center w-16 cursor-pointer hover:bg-emerald-100 text-emerald-900 transition-colors select-none"
+                    >
+                      ক্রমিক ✚
+                    </th>
+                    <th className="py-2.5 px-3 border-r border-slate-200 text-left w-1/4">বিষয়</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200 text-left">কার্যপরিধি/সিদ্ধান্ত</th>
+                    <th className="py-2.5 px-3 border-r border-slate-200 text-center w-1/4">বাস্তবায়নকারী</th>
+                    <th className="py-2.5 px-1 text-center w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(meetingState.rows && meetingState.rows.length > 0 ? meetingState.rows : []).map((row, idx) => (
+                    <tr key={row.id || idx} className="border-b border-slate-200 hover:bg-slate-50/50">
+                      <td className="py-2 px-1 border-r border-slate-200 text-center font-bold text-xs text-slate-700 bg-slate-50/80">
+                        {toBn(idx + 1)}
+                      </td>
+                      <td className="p-1.5 border-r border-slate-200">
+                        <textarea
+                          value={row.topic || ""}
+                          onChange={(e) => updateMeetingRow(idx, "topic", e.target.value)}
+                          placeholder="বিষয়..."
+                          rows={2}
+                          className="w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-emerald-700 font-semibold bg-white resize-none"
+                        />
+                      </td>
+                      <td className="p-1.5 border-r border-slate-200">
+                        <textarea
+                          value={row.decision || ""}
+                          onChange={(e) => updateMeetingRow(idx, "decision", e.target.value)}
+                          placeholder="কার্যপরিধি/সিদ্ধান্ত..."
+                          rows={2}
+                          className="w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-emerald-700 bg-white resize-none"
+                        />
+                      </td>
+                      <td className="p-1.5 border-r border-slate-200">
+                        <input
+                          type="text"
+                          value={row.person || ""}
+                          onChange={(e) => updateMeetingRow(idx, "person", e.target.value)}
+                          placeholder="বাস্তবায়নকারী"
+                          className="w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-emerald-700 text-center font-medium bg-white"
+                        />
+                      </td>
+                      <td className="p-1 text-center">
+                        {meetingState.rows.length > 1 && (
+                          <button onClick={() => removeMeetingRow(idx)} className="text-red-400 hover:text-red-600 p-1">
+                            <Trash size={14} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <button onClick={handleSaveMeeting} className="w-full h-11 rounded-2xl font-bold text-white text-xs bg-emerald-900 flex items-center justify-center gap-2 shadow-sm">
+              {savingMeeting ? <Loader2 className="animate-spin" size={16} /> : meetingSavedTick ? "সেভ ও সিংক হয়েছে!" : "মাসিক সভা ও সিদ্ধান্ত সেভ করুন"}
+            </button>
+          </div>
+        </div>
+
+        {/* Weekly Reflection */}
+        <div className="px-5 mt-8">
+          <h2 className="font-bold mb-3 text-sm text-slate-800">সাপ্তাহিক রিফ্লেকশন</h2>
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5].map((w) => (
+              <div key={w} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+                <div className="text-xs font-bold mb-2 text-emerald-900">সপ্তাহ {toBn(w)}</div>
+                <div className="space-y-2">
+                  <textarea value={weekly[w]?.good || ""} onChange={(e) => updateWeekly(w, "good", e.target.value)} placeholder="এই সপ্তাহে যা ভালো হয়েছে..." rows={1} className="w-full rounded-xl border border-slate-200 p-2 text-xs outline-none bg-slate-50/50 focus:bg-white" />
+                  <textarea value={weekly[w]?.gap || ""} onChange={(e) => updateWeekly(w, "gap", e.target.value)} placeholder="কোথায় ঘাটতি ছিল..." rows={1} className="w-full rounded-xl border border-slate-200 p-2 text-xs outline-none bg-slate-50/50 focus:bg-white" />
+                  <textarea value={weekly[w]?.plan || ""} onChange={(e) => updateWeekly(w, "plan", e.target.value)} placeholder="আগামী সপ্তাহের পরিকল্পনা..." rows={1} className="w-full rounded-xl border border-slate-200 p-2 text-xs outline-none bg-slate-50/50 focus:bg-white" />
                 </div>
               </div>
             ))}
-          </div>
-
-          <button onClick={handleSaveMeeting} className="w-full h-11 rounded-xl font-bold text-white text-xs bg-emerald-900 flex items-center justify-center gap-2">
-            {savingMeeting ? <Loader2 className="animate-spin" size={16} /> : meetingSavedTick ? "সেভ হয়েছে!" : "পারিবারিক সভার তথ্য সেভ করুন"}
-          </button>
-        </div>
-      </div>
-
-      {/* Weekly Reflection */}
-      <div className="px-5 mt-8">
-        <h2 className="font-bold mb-3 text-sm" style={{ color: "#16302B" }}>সাপ্তাহিক রিফ্লেকশন</h2>
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((w) => (
-            <div key={w} className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-              <div className="text-xs font-bold mb-2 text-emerald-900">সপ্তাহ {toBn(w)}</div>
-              <div className="space-y-2">
-                <textarea value={weekly[w]?.good || ""} onChange={(e) => updateWeekly(w, "good", e.target.value)} placeholder="এই সপ্তাহে যা ভালো হয়েছে..." rows={1} className="w-full rounded-lg border p-2 text-xs outline-none" />
-                <textarea value={weekly[w]?.gap || ""} onChange={(e) => updateWeekly(w, "gap", e.target.value)} placeholder="কোথায় ঘাটতি ছিল..." rows={1} className="w-full rounded-lg border p-2 text-xs outline-none" />
-                <textarea value={weekly[w]?.plan || ""} onChange={(e) => updateWeekly(w, "plan", e.target.value)} placeholder="আগামী সপ্তাহের পরিকল্পনা..." rows={1} className="w-full rounded-lg border p-2 text-xs outline-none" />
-              </div>
-            </div>
-          ))}
-          <button onClick={handleSaveWeekly} className="w-full h-10 rounded-xl font-bold text-white text-xs bg-emerald-900 flex items-center justify-center">
-            {savingWeekly ? <Loader2 className="animate-spin" size={14} /> : weeklySavedTick ? "সেভ হয়েছে!" : "রিফ্লেকশন সেভ করুন"}
-          </button>
-        </div>
-      </div>
-
-      {/* Family Code and Backup Modal */}
-      {showCodeModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-5 z-50">
-          <div className="bg-white rounded-2xl p-5 w-full max-w-sm">
-            <h3 className="font-bold text-base mb-1" style={{ color: "#16302B" }}>ফ্যামিলি কোড ও ডাটা ব্যাকআপ</h3>
-            <p className="text-xs text-gray-500 mb-3">বর্তমান কোড: <b className="text-emerald-800">{getFamilyCode()}</b></p>
-            <input value={inputCode} onChange={(e) => setInputCode(e.target.value)} placeholder="নতুন কোড লিখুন" className="w-full h-9 border rounded-xl px-3 text-xs mb-2 outline-none" />
-            <button onClick={() => setFamilyCode(inputCode)} className="w-full h-9 bg-emerald-900 text-white rounded-xl text-xs font-semibold mb-4">কোড পরিবর্তন করুন</button>
-            <div className="border-t pt-3">
-              <p className="text-xs font-semibold mb-2">ডাটা ম্যানুয়াল ব্যাকআপ:</p>
-              <div className="flex gap-2">
-                <button onClick={handleExportData} className="flex-1 h-8 rounded-xl border border-emerald-800 text-emerald-800 font-semibold text-xs flex items-center justify-center gap-1"><DownloadIcon size={12} /> ডাউনলোড</button>
-                <label className="flex-1 h-8 rounded-xl bg-emerald-800 text-white font-semibold text-xs flex items-center justify-center gap-1 cursor-pointer">
-                  <UploadIcon size={12} /> আপলোড <input type="file" accept=".json" onChange={handleImportData} className="hidden" />
-                </label>
-              </div>
-            </div>
-            <button onClick={() => setShowCodeModal(false)} className="w-full mt-4 h-8 border rounded-xl text-xs font-semibold">বন্ধ করুন</button>
+            <button onClick={handleSaveWeekly} className="w-full h-11 rounded-2xl font-bold text-white text-xs bg-emerald-900 flex items-center justify-center shadow-sm">
+              {savingWeekly ? <Loader2 className="animate-spin" size={14} /> : weeklySavedTick ? "সেভ হয়েছে!" : "সাপ্তাহিক রিফ্লেকশন সেভ করুন"}
+            </button>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Add Custom Field Modal */}
       {showAddCustom && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-5 z-50">
-          <div className="bg-white rounded-2xl p-5 w-full max-w-sm">
-            <h3 className="font-bold text-sm mb-2">নতুন কাস্টম টাস্ক নাম</h3>
-            <input value={newCustomLabel} onChange={(e) => setNewCustomLabel(e.target.value)} placeholder="যেমন: ২ লিটার পানি পান" className="w-full h-9 border rounded-xl px-3 text-xs mb-3 outline-none" />
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50">
+          <div className="bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100">
+            <h3 className="font-bold text-sm mb-2 text-slate-800">নতুন কাস্টম টাস্কের নাম</h3>
+            <input value={newCustomLabel} onChange={(e) => setNewCustomLabel(e.target.value)} placeholder="যেমন: ২ লিটার পানি পান" className="w-full h-10 border border-slate-200 rounded-xl px-3 text-xs mb-4 outline-none font-medium focus:border-emerald-800" />
             <div className="flex gap-2">
-              <button onClick={handleAddCustomField} className="flex-1 h-8 bg-emerald-800 text-white rounded-xl text-xs font-semibold">যোগ করুন</button>
-              <button onClick={() => setShowAddCustom(false)} className="flex-1 h-8 border rounded-xl text-xs font-semibold">বাতিল</button>
+              <button onClick={handleAddCustomField} className="flex-1 h-9 bg-emerald-800 text-white rounded-xl text-xs font-bold">যোগ করুন</button>
+              <button onClick={() => setShowAddCustom(false)} className="flex-1 h-9 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold">বাতিল</button>
             </div>
           </div>
         </div>
       )}
+
+      {/* App Rules Modal */}
+      {showHelpModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50">
+          <div className="bg-white rounded-3xl p-5 w-full max-w-md shadow-xl border border-slate-100 max-h-[80vh] overflow-y-auto custom-scrollbar">
+            <div className="flex items-center justify-between mb-3 border-b pb-2">
+              <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2"><HelpCircle size={16} color="#0E4B43" /> অ্যাপ ব্যবহারের নিয়মাবলী</h3>
+              <button onClick={() => setShowHelpModal(false)}><X size={18} className="text-slate-400" /></button>
+            </div>
+            <div className="text-xs text-slate-600 space-y-2.5 leading-relaxed font-medium">
+              <p>১. প্রতিদিনের দ্বীন ও দুনিয়াবি কাজগুলো নির্দিষ্ট দিনে প্রবেশ করে টিক চিহ্ন বা সংখ্যা দিয়ে পূরণ করুন।</p>
+              <p>২. ফ্যামিলি কোড ব্যবহার করে পরিবারের সবার ডিভাইসে ডাটা রিয়েল-টাইমে সিংক রাখা যাবে।</p>
+              <p>৩. মাসের শেষে সম্পূর্ণ রিপোর্ট ও পারিবারিক সভার কার্যপরিধি PDF ফাইল হিসেবে প্রিন্ট দেওয়া যাবে।</p>
+              <p>৪. ডাটা সুরক্ষার জন্য মেনু থেকে নিয়মিত ব্যাকআপ ফাইল ডাউনলোড করে রাখতে পারেন।</p>
+            </div>
+            <button onClick={() => setShowHelpModal(false)} className="w-full mt-5 h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">বুঝেছি</button>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedbackModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50">
+          <div className="bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2"><MessageSquare size={16} color="#0E4B43" /> পরামর্শ জানান</h3>
+              <button onClick={() => setShowFeedbackModal(false)}><X size={18} className="text-slate-400" /></button>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-3">আপনার মতামত বা পরামর্শ লিখুন। এটি সরাসরি আমাদের ডেভেলপমেন্ট টিমের কাছে চলে যাবে।</p>
+            <textarea
+              value={feedbackMsg}
+              onChange={(e) => setFeedbackMsg(e.target.value)}
+              rows={4}
+              placeholder="আপনার অমূল্য পরামর্শ লিখুন..."
+              className="w-full rounded-2xl border border-slate-200 p-3 text-xs outline-none focus:border-emerald-800 resize-none mb-3 bg-slate-50/50"
+            />
+            <div className="flex gap-2">
+              <button onClick={handleSendFeedback} className="flex-1 h-9 bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"><MessageSquare size={14} /> পাঠিয়ে দিন</button>
+              <button onClick={() => setShowFeedbackModal(false)} className="h-9 px-4 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold">বাতিল</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
 
 function FieldGroup({ title, fields, entry, onChange, member }) {
   return (
-    <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-      <h3 className="text-sm font-bold mb-3" style={{ color: "#0E4B43" }}>{title}</h3>
+    <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80">
+      <h3 className="text-sm font-bold mb-3 text-emerald-950">{title}</h3>
       <div className="space-y-3">
         {fields.filter(f => fieldApplies(f, member)).map((f) => (
           <div key={f.key} className="flex items-center justify-between gap-3">
-            <span className="text-sm" style={{ color: "#33443A" }}>{f.label}</span>
+            <span className="text-xs font-medium text-slate-700">{f.label}</span>
             {f.type === "bool" && <BoolToggle value={!!entry[f.key]} onChange={(v) => onChange(f.key, v)} />}
             {f.type === "count" && <CountStepper value={entry[f.key]} max={f.max} onChange={(v) => onChange(f.key, v)} />}
             {f.type === "number" && <NumberField value={entry[f.key]} target={f.target} onChange={(v) => onChange(f.key, v)} />}
