@@ -179,9 +179,9 @@ const DEEN_FIELDS = [
   { key: "sunnahNafl", label: "সুন্নত/নফল নামাজ", shortLabel: "সুন্নত/নফল", type: "bool" },
   { key: "tahajjud", label: "তাহাজ্জুদ", shortLabel: "তাহাজ্জুদ", type: "bool" },
   { key: "dhikr", label: "যিকির/দোয়া", shortLabel: "যিকির/দোয়া", type: "bool" },
-  { key: "quranPages", label: "কুরআন/তাফসীর/আরবি শেখা (পৃষ্ঠা)", shortLabel: "কুরআন/তাফসীর/আরবি", type: "number", target: 5 },
+  { key: "quranPages", label: "কুরআন/তাফসীর/আরবি শেখা (পৃষ্ঠা)", shortLabel: "কুরআন/তাফসীর", type: "number", target: 5 },
   { key: "seerah", label: "সীরাত/জীবনী/ইতিহাস", shortLabel: "সীরাত/জীবনী", type: "bool" },
-  { key: "selfStudy", label: "ইলম অর্জন/কোর্সের পড়া", shortLabel: "ইলম অর্জন/কোর্স", type: "bool" },
+  { key: "selfStudy", label: "ইলম অর্জন/কোর্সের পড়া", shortLabel: "ইলম অর্জন", type: "bool" },
   { key: "taleem", label: "তালিম/পাঠচক্র", shortLabel: "তালিম/পাঠচক্র", type: "bool" },
   { key: "sadaqah", label: "সাদাকা/দান", shortLabel: "সাদাকা/দান", type: "bool" },
 ];
@@ -191,10 +191,10 @@ const DUNIYA_FIELDS = [
   { key: "exercise", label: "ব্যায়াম/শরীরচর্চা", shortLabel: "ব্যায়াম", type: "bool" },
   { key: "healthyFood", label: "স্বাস্থ্যকর খাবার", shortLabel: "স্বাস্থ্যকর খাবার", type: "bool" },
   { key: "familyTime", label: "পরিবারকে সময় দেওয়া", shortLabel: "পরিবারকে সময়", type: "bool" },
-  { key: "screenLimit", label: "সোশ্যাল মিডিয়া/মোবাইল সীমিত (সর্বোচ্চ ১ ঘণ্টা)", shortLabel: "সোশ্যাল মিডিয়া ≤১ঘণ্টা", type: "bool" },
+  { key: "screenLimit", label: "সোশ্যাল মিডিয়া/মোবাইল সীমিত (সর্বোচ্চ ১ ঘণ্টা)", shortLabel: "সোশ্যাল মিডিয়া ≤১ঘ", type: "bool" },
   { key: "noHurtingOthers", label: "অন্যের হক নষ্ট/মনে কষ্ট না দেয়া", shortLabel: "কষ্ট না দেয়া", type: "bool" },
   { key: "noProcrastination", label: "অলসতা/কাজ ফেলে না রাখা", shortLabel: "অলসতা রোধ", type: "bool" },
-  { key: "phoneOffBy11", label: "রাত ১১টার মধ্যে ফোন/ইন্টারনেট বন্ধ", shortLabel: "১১টায় ফোন বন্ধ", type: "bool" },
+  { key: "phoneOffBy11", label: "রাত ১১টার মধ্যে ফোন/ইন্টারনেট বন্ধ", shortLabel: "১১টায় ফোন অফ", type: "bool" },
 ];
 
 const ALL_FIELDS = [...DEEN_FIELDS, ...DUNIYA_FIELDS];
@@ -649,7 +649,7 @@ function App() {
     );
   }
 
-  // Optimized Single-Page Print View (Multi-line Headers & Crisp Borders)
+  // Optimized Single-Page Print View with Punch Hole Margin (20mm Left Margin)
   if (printMode) {
     const total = monthStats.total;
     const rows = Array.from({ length: total }, (_, i) => i + 1);
@@ -657,26 +657,34 @@ function App() {
       <div style={{ fontFamily: "'Noto Sans Bengali', sans-serif", color: "#111" }}>
         <style>{`
           @media print {
-            @page { size: A4 landscape; margin: 5mm; }
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff !important; }
+            @page { 
+              size: A4 landscape; 
+              margin: 6mm 6mm 6mm 20mm !important; /* File punch left margin */
+            }
+            body { 
+              -webkit-print-color-adjust: exact; 
+              print-color-adjust: exact; 
+              background: #fff !important; 
+            }
             .no-print { display: none !important; }
           }
           table { border-collapse: collapse; width: 100%; table-layout: fixed; }
-          th, td { border: 1px solid #444; padding: 2px 1px; font-size: 8px; text-align: center; vertical-align: middle; }
+          th, td { border: 1px solid #333; padding: 2px 1px; font-size: 8px; text-align: center; vertical-align: middle; }
           th { 
             background: #0E4B43 !important; 
             color: #fff !important; 
             font-weight: 600; 
             font-size: 7.5px; 
-            line-height: 1.1; 
-            height: 38px;
+            line-height: 1.15; 
+            height: 40px;
             white-space: normal !important;
-            word-break: break-word;
+            word-wrap: break-word !important;
+            word-break: break-word !important;
           }
-          tr { height: 16px; }
-          tbody tr:nth-child(even) { background-color: #f9fbf8; }
+          tr { height: 17px; }
+          tbody tr:nth-child(even) { background-color: #f8faf7; }
         `}</style>
-        <div className="p-2 w-full mx-auto">
+        <div className="p-2 w-full mx-auto" style={{ paddingLeft: "5mm" }}>
           <div className="flex items-center justify-between mb-2 no-print">
             <button onClick={() => setPrintMode(false)} className="px-3 py-1.5 rounded-lg border text-sm font-semibold" style={{ borderColor: "#D8DED3" }}>
               ← ফিরে যান
@@ -704,11 +712,11 @@ function App() {
           <table>
             <thead>
               <tr>
-                <th style={{ width: "22px" }}>তাং</th>
+                <th style={{ width: "24px" }}>তাং</th>
                 {ALL_FIELDS.map((f) => (
                   <th key={f.key}>{f.shortLabel || f.label}</th>
                 ))}
-                <th style={{ width: "28px" }}>স্কোর</th>
+                <th style={{ width: "30px" }}>স্কোর</th>
               </tr>
             </thead>
             <tbody>
