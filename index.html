@@ -17,7 +17,7 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-<!-- Chart.js for Visual Progress -->
+<!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <!-- Firebase compat libraries -->
@@ -104,7 +104,6 @@
     }
   };
 
-  // PWA Service Worker Registration
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -234,7 +233,35 @@ function scoreColor(score) {
   return "#E7EEE3";
 }
 
-function calculateStreak(monthEntries, member) {
+function fieldPercent(field, monthEntries, totalDays, member) {
+  if (!fieldApplies(field, member)) return null;
+  let hit = 0;
+  if (field.type === "count") {
+    let sum = 0;
+    for (let d = 1; d <= totalDays; d++) {
+      const e = monthEntries[pad2(d)];
+      sum += Math.min(field.max, Number(e?.[field.key]) || 0);
+    }
+    return Math.round((sum / (totalDays * field.max)) * 100);
+  }
+  if (field.type === "number" && field.target) {
+    let sum = 0;
+    for (let d = 1; d <= totalDays; d++) {
+      const e = monthEntries[pad2(d)];
+      sum += Math.min(field.target, Number(e?.[field.key]) || 0);
+    }
+    return Math.round((sum / (totalDays * field.target)) * 100);
+  }
+  for (let d = 1; d <= totalDays; d++) {
+    const e = monthEntries[pad2(d)];
+    if (!e) continue;
+    if (field.type === "bool" && e[field.key]) hit += 1;
+    if (field.type === "number" && !field.target && Number(e[field.key]) > 0) hit += 1;
+  }
+  return Math.round((hit / totalDays) * 100);
+}
+
+function calculateStreak(monthEntries, member, allFields) {
   let streak = 0;
   const today = new Date();
   const d = new Date(today);
@@ -243,8 +270,7 @@ function calculateStreak(monthEntries, member) {
     const dayStr = pad2(d.getDate());
     const entry = monthEntries[dayStr];
     
-    // Check if score is above 50% for positive streak
-    if (entry && dailyScore(entry, member, [...DEFAULT_DEEN_FIELDS, ...DEFAULT_DUNIYA_FIELDS]) >= 0.5) {
+    if (entry && dailyScore(entry, member, allFields) >= 0.5) {
       streak++;
     } else if (i > 0) {
       break; 
@@ -254,6 +280,18 @@ function calculateStreak(monthEntries, member) {
   return streak;
 }
 
+function weeklyKey(memberId, year, month0) {
+  return `weekly:${memberId}:${monthPrefix(year, month0)}`;
+}
+async function loadWeekly(memberId, year, month0) {
+  try {
+    const res = await appStorage.get(weeklyKey(memberId, year, month0), true);
+    return res ? JSON.parse(res.value) : {};
+  } catch { return {}; }
+}
+async function saveWeekly(memberId, year, month0, data) {
+  await appStorage.set(weeklyKey(memberId, year, month0), JSON.stringify(data), true);
+}
 async function loadMembers() {
   try {
     const res = await appStorage.get("members", true);
@@ -356,6 +394,29 @@ function CountStepper({ value, onChange, max, disabled }) {
   );
 }
 
+function NumberField({ value, onChange, disabled, target }) {
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="number"
+        min="0"
+        inputMode="decimal"
+        disabled={disabled}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="০"
+        className="w-16 h-9 rounded-lg border px-2 text-right outline-none"
+        style={{ borderColor: "#D8DED3", fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}
+      />
+      {target ? (
+        <span className="text-xs" style={{ color: "#8A9A8F", fontFamily: "'IBM Plex Mono', monospace" }}>
+          /{toBn(target)}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function ProgressChart({ monthEntries, totalDays, member, allFields }) {
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
@@ -445,7 +506,15 @@ function App() {
   });
   const [monthEntries, setMonthEntries] = useState({});
   const [loadingMonth, setLoadingMonth] = useState(false);
+  const [printMode, setPrintMode] = useState(false);
+
+  const [weekly, setWeekly] = useState({});
+  const [loadingWeekly, setLoadingWeekly] = useState(false);
+  const [savingWeekly, setSavingWeekly] = useState(false);
+  const [weeklySavedTick, setWeeklySavedTick] = useState(false);
+
   const [showCodeModal, setShowCodeModal] = useState(false);
+  const [inputCode, setInputCode] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -498,6 +567,79 @@ function App() {
     refreshMonth();
   }, [refreshMonth]);
 
+  const refreshWeekly = useCallback(() => {
+    if (!selectedId) return;
+    setLoadingWeekly(true);
+    loadWeekly(selectedId, monthCursor.year, monthCursor.month0).then((data) => {
+      setWeekly(data);
+      setLoadingWeekly(false);
+    });
+  }, [selectedId, monthCursor]);
+
+  useEffect(() => {
+    refreshWeekly();
+  }, [refreshWeekly]);
+
+  // Export JSON Backup
+  async function handleExportData() {
+    try {
+      const snap = await db.collection(getCollectionName()).get();
+      const exportObj = {};
+      snap.docs.forEach((doc) => {
+        exportObj[doc.id] = doc.data();
+      });
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj, null, 2));
+      const downloadAnchor = document.createElement("a");
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `daily_task_backup_${getFamilyCode()}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    } catch (err) {
+      alert("ডাটা এক্সপোর্ট করতে সমস্যা হয়েছে: " + err.message);
+    }
+  }
+
+  // Import JSON Backup
+  async function handleImportData(e) {
+    const fileReader = new FileReader();
+    if (e.target.files && e.target.files[0]) {
+      fileReader.readAsText(e.target.files[0], "UTF-8");
+      fileReader.onload = async (event) => {
+        try {
+          const parsed = JSON.parse(event.target.result);
+          const batch = db.batch();
+          const colRef = db.collection(getCollectionName());
+          Object.keys(parsed).forEach((key) => {
+            const docRef = colRef.doc(key);
+            batch.set(docRef, parsed[key]);
+          });
+          await batch.commit();
+          alert("ডাটা সফলভাবে ইম্পোর্ট করা হয়েছে!");
+          window.location.reload();
+        } catch (err) {
+          alert("ভুল ব্যাকআপ ফাইল: " + err.message);
+        }
+      };
+    }
+  }
+
+  function updateWeekly(weekIdx, field, value) {
+    setWeekly((prev) => ({
+      ...prev,
+      [weekIdx]: { ...(prev[weekIdx] || {}), [field]: value },
+    }));
+  }
+
+  async function handleSaveWeekly() {
+    if (!selectedId) return;
+    setSavingWeekly(true);
+    await saveWeekly(selectedId, monthCursor.year, monthCursor.month0, weekly);
+    setSavingWeekly(false);
+    setWeeklySavedTick(true);
+    setTimeout(() => setWeeklySavedTick(false), 1600);
+  }
+
   async function handleAddCustomField() {
     if (!newCustomLabel.trim()) return;
     const key = `custom_${Date.now()}`;
@@ -522,6 +664,16 @@ function App() {
     await saveMembers(next);
   }
 
+  async function handleDeleteMember(id) {
+    const next = (members || []).filter((m) => m.id !== id);
+    setMembers(next);
+    setConfirmDeleteId(null);
+    await saveMembers(next);
+    if (selectedId === id) {
+      setSelectedId(next.length ? next[0].id : null);
+    }
+  }
+
   function updateField(key, value) {
     setEntry((prev) => ({ ...prev, [key]: value }));
   }
@@ -536,7 +688,7 @@ function App() {
     refreshMonth();
   }
 
-  const streak = useMemo(() => calculateStreak(monthEntries, selectedMember), [monthEntries, selectedMember]);
+  const streak = useMemo(() => calculateStreak(monthEntries, selectedMember, allFields), [monthEntries, selectedMember, allFields]);
 
   const monthStats = useMemo(() => {
     const total = daysInMonth(monthCursor.year, monthCursor.month0);
@@ -556,107 +708,261 @@ function App() {
 
   if (members === null) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" color="#0E4B43" size={28} /></div>;
 
+  // Print Mode PDF Layout
+  if (printMode) {
+    const total = monthStats.total;
+    const rows = Array.from({ length: total }, (_, i) => i + 1);
+    return (
+      <div style={{ fontFamily: "'Noto Sans Bengali', sans-serif", color: "#111" }}>
+        <style>{`
+          @media print {
+            @page { size: A4 landscape; margin: 6mm 6mm 6mm 20mm !important; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff !important; }
+            .no-print { display: none !important; }
+          }
+          table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+          th, td { border: 1px solid #333; padding: 2px 1px; font-size: 8px; text-align: center; vertical-align: middle; }
+          th { background: #0E4B43 !important; color: #fff !important; font-weight: 600; font-size: 7.5px; height: 40px; white-space: normal !important; word-wrap: break-word !important; }
+          tr { height: 17px; }
+          tbody tr:nth-child(even) { background-color: #f8faf7; }
+        `}</style>
+        <div className="p-2 w-full mx-auto" style={{ paddingLeft: "5mm" }}>
+          <div className="flex items-center justify-between mb-2 no-print">
+            <button onClick={() => setPrintMode(false)} className="px-3 py-1.5 rounded-lg border text-sm font-semibold" style={{ borderColor: "#D8DED3" }}>← ফিরে যান</button>
+            <button onClick={() => window.print()} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}><Printer size={14} /> প্রিন্ট / PDF</button>
+          </div>
+          <div style={{ borderBottom: "2px solid #0E4B43", paddingBottom: "4px", marginBottom: "6px" }} className="flex justify-between items-end">
+            <div>
+              <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 16, fontWeight: 700, margin: 0, color: "#0E4B43" }}>Daily Task — দ্বীন ও দুনিয়া ট্র্যাকার</h1>
+              <p style={{ fontSize: 10, margin: "2px 0 0 0", color: "#444" }}>মাস: <b>{BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}</b> &nbsp;|&nbsp; সদস্য: <b>{selectedMember?.name}</b></p>
+            </div>
+            <div style={{ fontSize: 10, textAlign: "right", color: "#333" }}>পূরণ করা দিন: <b>{toBn(monthStats.filled)}/{toBn(total)}</b> &nbsp;|&nbsp; গড় স্কোর: <b>{toBn(monthStats.avgPct)}%</b></div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style={{ width: "24px" }}>তাং</th>
+                {allFields.map((f) => (<th key={f.key}>{f.shortLabel || f.label}</th>))}
+                <th style={{ width: "30px" }}>স্কোর</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((d) => {
+                const e = monthEntries[pad2(d)];
+                const s = dailyScore(e, selectedMember, allFields);
+                return (
+                  <tr key={d}>
+                    <td style={{ fontWeight: 700, background: "#f0f4f1" }}>{toBn(d)}</td>
+                    {allFields.map((f) => {
+                      if (!fieldApplies(f, selectedMember)) return <td key={f.key} style={{ color: "#ccc" }}>—</td>;
+                      if (!e) return <td key={f.key}></td>;
+                      const v = e[f.key];
+                      let disp = f.type === "bool" ? (v ? "✓" : "") : (v !== undefined && v !== "" ? toBn(v) : "");
+                      return <td key={f.key} style={{ color: f.type === "bool" && v ? "#0E4B43" : "#111", fontWeight: f.type === "bool" && v ? "bold" : "normal" }}>{disp}</td>;
+                    })}
+                    <td style={{ fontWeight: 700, background: "#f0f4f1" }}>{s === null ? "" : toBn(Math.round(s * 100)) + "%"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: "#E7EEE3", fontWeight: 700 }}>
+                <td>%</td>
+                {allFields.map((f) => {
+                  const pct = fieldPercent(f, monthEntries, total, selectedMember);
+                  return <td key={f.key}>{pct === null ? "—" : toBn(pct) + "%"}</td>;
+                })}
+                <td>{toBn(monthStats.avgPct)}%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  const total = monthStats.total;
+  const firstOfMonth = new Date(monthCursor.year, monthCursor.month0, 1);
+  const leadBlanks = firstOfMonth.getDay();
+
   return (
     <div className="min-h-screen pb-16" style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}>
-      {/* Header */}
+      {/* Top Header */}
       <div style={{ background: "#0E4B43" }} className="px-5 pt-6 pb-8 relative overflow-hidden">
         <div className="relative flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <StarMark size={20} />
-            <h1 className="text-xl font-bold" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#F4F7F1" }}>
-              Daily Task
-            </h1>
+            <h1 className="text-xl font-bold" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#F4F7F1" }}>Daily Task</h1>
           </div>
-          
           <button onClick={() => setShowCodeModal(true)} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full text-white/80 border border-white/20">
-            <KeyIcon size={12} /> ফ্যামিলি কোড
+            <KeyIcon size={12} /> ফ্যামিলি কোড & ব্যাকআপ
           </button>
         </div>
 
-        {/* Streak Counter */}
+        {/* Continuous Streak Badge */}
         <div className="mt-3 flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl w-fit">
           <span className="text-lg">🔥</span>
           <span className="text-xs font-semibold text-white">ধারাবাহিক স্ট্রিক: {toBn(streak)} দিন</span>
         </div>
 
-        {/* Member Selector */}
+        {/* Member list */}
         <div className="relative flex gap-2 mt-4 flex-wrap">
-          {members.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setSelectedId(m.id)}
-              className="px-3 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1"
-              style={{ background: m.id === selectedId ? "#C89B3C" : "rgba(255,255,255,0.12)", color: m.id === selectedId ? "#16302B" : "#F4F7F1" }}
-            >
-              <User size={13} /> {m.name}
-            </button>
-          ))}
+          {members.map((m) =>
+            confirmDeleteId === m.id ? (
+              <div key={m.id} className="px-2.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5 bg-white/20 text-white">
+                <span>{m.name} মুছবেন?</span>
+                <button onClick={() => handleDeleteMember(m.id)} className="w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center"><Check size={12} /></button>
+                <button onClick={() => setConfirmDeleteId(null)} className="w-5 h-5 rounded-full bg-gray-500 text-white flex items-center justify-center"><X size={12} /></button>
+              </div>
+            ) : (
+              <button
+                key={m.id}
+                onClick={() => setSelectedId(m.id)}
+                className="pl-3 pr-1.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5"
+                style={{ background: m.id === selectedId ? "#C89B3C" : "rgba(255,255,255,0.12)", color: m.id === selectedId ? "#16302B" : "#F4F7F1" }}
+              >
+                <User size={13} /> {m.name}
+                <span onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(m.id); }} className="w-4 h-4 rounded-full flex items-center justify-center bg-black/10"><X size={10} /></span>
+              </button>
+            )
+          )}
+          {!addingMember ? (
+            <button onClick={() => setAddingMember(true)} className="px-3 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1 bg-white/10 text-white"><Plus size={14} /> সদস্য</button>
+          ) : (
+            <div className="flex items-center gap-1 bg-white/20 p-1 rounded-full">
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="নাম" className="w-20 px-2 rounded-full text-xs text-black outline-none" />
+              <button onClick={handleAddMember} className="px-2 py-0.5 rounded-full text-xs bg-amber-500 text-black font-bold">যোগ</button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Date Nav */}
+      {/* Date Navigation Bar */}
       <div className="px-5 -mt-4">
         <div className="bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center justify-between" style={{ border: "1px solid #E7EEE3" }}>
-          <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() - 1)))} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100">
-            <ChevronLeft size={16} />
-          </button>
-          <div className="font-semibold text-sm" style={{ color: "#16302B" }}>
-            {toBn(viewDate.getDate())} {BN_MONTHS[viewDate.getMonth()]} {toBn(viewDate.getFullYear())}
-          </div>
-          <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() + 1)))} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100">
-            <ChevronRight size={16} />
-          </button>
+          <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() - 1)))} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100"><ChevronLeft size={16} /></button>
+          <div className="font-semibold text-sm" style={{ color: "#16302B" }}>{toBn(viewDate.getDate())} {BN_MONTHS[viewDate.getMonth()]} {toBn(viewDate.getFullYear())}</div>
+          <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() + 1)))} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100"><ChevronRight size={16} /></button>
         </div>
       </div>
 
-      {/* Entry Forms */}
+      {/* Input Form Fields */}
       <div className="px-5 mt-5 space-y-4">
         <FieldGroup title="দ্বীন" fields={DEFAULT_DEEN_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
         <FieldGroup title="দুনিয়া" fields={DEFAULT_DUNIYA_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
-        
-        {/* Custom Tasks Section */}
+
+        {/* Custom Tasks */}
         <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold" style={{ color: "#0E4B43" }}>কাস্টম টাস্ক (ব্যক্তিগত લક્ષ্য)</h3>
-            <button onClick={() => setShowAddCustom(true)} className="text-xs font-semibold text-emerald-800 flex items-center gap-1">
-              <Plus size={12} /> নতুন যোগ করুন
-            </button>
+            <h3 className="text-sm font-bold" style={{ color: "#0E4B43" }}>কাস্টম টাস্ক (ব্যক্তিগত লক্ষ্য)</h3>
+            <button onClick={() => setShowAddCustom(true)} className="text-xs font-semibold text-emerald-800 flex items-center gap-1"><Plus size={12} /> নতুন যোগ করুন</button>
           </div>
           {customFields.map((f) => (
-            <div key={f.key} className="flex items-center justify-between gap-3 py-1.5">
+            <div key={f.key} className="flex items-center justify-between gap-3 py-1.5 border-b last:border-b-0">
               <span className="text-sm">{f.label}</span>
               <BoolToggle value={!!entry[f.key]} onChange={(v) => updateField(f.key, v)} />
             </div>
           ))}
         </div>
 
-        <button onClick={handleSave} className="w-full h-12 rounded-xl font-bold text-white flex items-center justify-center gap-2" style={{ background: "#0E4B43" }}>
-          {savedTick ? "সেভ হয়েছে!" : "সেভ করুন"}
+        {/* Daily Note */}
+        <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
+          <label className="block text-sm font-semibold mb-2" style={{ color: "#16302B" }}>দিনের নোট / আত্ম-সমালোচনা</label>
+          <textarea value={entry.note || ""} onChange={(e) => updateField("note", e.target.value)} rows={2} placeholder="আজকের অনুভূতি বা শিক্ষা লিখুন..." className="w-full rounded-xl border p-2 text-sm outline-none resize-none" style={{ borderColor: "#D8DED3" }} />
+        </div>
+
+        <button onClick={handleSave} className="w-full h-12 rounded-xl font-bold text-white flex items-center justify-center gap-2" style={{ background: savedTick ? "#4C8C74" : "#0E4B43" }}>
+          {saving ? <Loader2 className="animate-spin" size={18} /> : savedTick ? "সেভ হয়েছে!" : "সেভ করুন"}
         </button>
       </div>
 
-      {/* Visual Chart */}
+      {/* Monthly Chart & Overview */}
       <div className="px-5 mt-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-bold flex items-center gap-1.5 text-sm" style={{ color: "#16302B" }}><CalIcon size={16} /> মাসিক ওভারভিউ</h2>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setMonthCursor((c) => (c.month0 === 0 ? { year: c.year - 1, month0: 11 } : { year: c.year, month0: c.month0 - 1 }))} className="w-7 h-7 flex items-center justify-center rounded-full bg-white border"><ChevronLeft size={14} /></button>
+            <span className="text-xs font-semibold px-1">{BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}</span>
+            <button onClick={() => setMonthCursor((c) => (c.month0 === 11 ? { year: c.year + 1, month0: 0 } : { year: c.year, month0: c.month0 + 1 }))} className="w-7 h-7 flex items-center justify-center rounded-full bg-white border"><ChevronRight size={14} /></button>
+          </div>
+        </div>
+
         <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-          <h2 className="font-bold text-sm mb-2" style={{ color: "#16302B" }}>মাসিক অগ্রগতি গ্রাফ</h2>
+          <div className="flex items-center justify-between mb-4">
+            <div><div className="text-[10px] text-gray-500">গড় স্কোর</div><div className="text-lg font-bold">{toBn(monthStats.avgPct)}%</div></div>
+            <div><div className="text-[10px] text-gray-500">পূরণ করা দিন</div><div className="text-lg font-bold">{toBn(monthStats.filled)}/{toBn(total)}</div></div>
+            <button onClick={() => setPrintMode(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-100 text-emerald-900 border"><Printer size={13} /> PDF / প্রিন্ট</button>
+          </div>
+
           <ProgressChart monthEntries={monthEntries} totalDays={monthStats.total} member={selectedMember} allFields={allFields} />
+
+          <div className="grid grid-cols-7 gap-1 mt-4">
+            {BN_WEEKDAYS.map((w) => (<div key={w} className="text-center text-[10px] font-semibold text-gray-400">{w}</div>))}
+            {Array.from({ length: leadBlanks }).map((_, i) => (<div key={"b" + i} />))}
+            {Array.from({ length: total }, (_, i) => i + 1).map((d) => {
+              const e = monthEntries[pad2(d)];
+              const s = dailyScore(e, selectedMember, allFields);
+              return (
+                <button key={d} onClick={() => setViewDate(new Date(monthCursor.year, monthCursor.month0, d))} className="aspect-square rounded-lg flex items-center justify-center text-[11px] font-semibold" style={{ background: scoreColor(s), color: s !== null && s >= 0.35 ? "#fff" : "#555" }}>
+                  {toBn(d)}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
+
+      {/* Weekly Reflection */}
+      <div className="px-5 mt-8">
+        <h2 className="font-bold mb-3 text-sm" style={{ color: "#16302B" }}>সাপ্তাহিক রিফ্লেকশন</h2>
+        <div className="space-y-3">
+          {[1, 2, 3, 4, 5].map((w) => (
+            <div key={w} className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
+              <div className="text-xs font-bold mb-2 text-emerald-900">সপ্তাহ {toBn(w)}</div>
+              <div className="space-y-2">
+                <textarea value={weekly[w]?.good || ""} onChange={(e) => updateWeekly(w, "good", e.target.value)} placeholder="এই সপ্তাহে যা ভালো হয়েছে..." rows={1} className="w-full rounded-lg border p-2 text-xs outline-none" />
+                <textarea value={weekly[w]?.gap || ""} onChange={(e) => updateWeekly(w, "gap", e.target.value)} placeholder="কোথায় ঘাটতি ছিল..." rows={1} className="w-full rounded-lg border p-2 text-xs outline-none" />
+                <textarea value={weekly[w]?.plan || ""} onChange={(e) => updateWeekly(w, "plan", e.target.value)} placeholder="আগামী সপ্তাহের পরিকল্পনা..." rows={1} className="w-full rounded-lg border p-2 text-xs outline-none" />
+              </div>
+            </div>
+          ))}
+          <button onClick={handleSaveWeekly} className="w-full h-10 rounded-xl font-bold text-white text-xs bg-emerald-900 flex items-center justify-center">
+            {savingWeekly ? <Loader2 className="animate-spin" size={14} /> : weeklySavedTick ? "সেভ হয়েছে!" : "রিফ্লেকশন সেভ করুন"}
+          </button>
+        </div>
+      </div>
+
+      {/* Family Code and Backup Modal */}
+      {showCodeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-5 z-50">
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm">
+            <h3 className="font-bold text-base mb-1" style={{ color: "#16302B" }}>ফ্যামিলি কোড ও ডাটা ব্যাকআপ</h3>
+            <p className="text-xs text-gray-500 mb-3">বর্তমান কোড: <b className="text-emerald-800">{getFamilyCode()}</b></p>
+            <input value={inputCode} onChange={(e) => setInputCode(e.target.value)} placeholder="নতুন কোড লিখুন" className="w-full h-9 border rounded-xl px-3 text-xs mb-2 outline-none" />
+            <button onClick={() => setFamilyCode(inputCode)} className="w-full h-9 bg-emerald-900 text-white rounded-xl text-xs font-semibold mb-4">কোড পরিবর্তন করুন</button>
+            <div className="border-t pt-3">
+              <p className="text-xs font-semibold mb-2">ডাটা ম্যানুয়াল ব্যাকআপ:</p>
+              <div className="flex gap-2">
+                <button onClick={handleExportData} className="flex-1 h-8 rounded-xl border border-emerald-800 text-emerald-800 font-semibold text-xs flex items-center justify-center gap-1"><DownloadIcon size={12} /> ডাউনলোড</button>
+                <label className="flex-1 h-8 rounded-xl bg-emerald-800 text-white font-semibold text-xs flex items-center justify-center gap-1 cursor-pointer">
+                  <UploadIcon size={12} /> আপলোড <input type="file" accept=".json" onChange={handleImportData} className="hidden" />
+                </label>
+              </div>
+            </div>
+            <button onClick={() => setShowCodeModal(false)} className="w-full mt-4 h-8 border rounded-xl text-xs font-semibold">বন্ধ করুন</button>
+          </div>
+        </div>
+      )}
 
       {/* Add Custom Field Modal */}
       {showAddCustom && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-5 z-50">
           <div className="bg-white rounded-2xl p-5 w-full max-w-sm">
-            <h3 className="font-bold text-md mb-2">নতুন কাস্টম টাস্ক নাম লিখুন</h3>
-            <input
-              value={newCustomLabel}
-              onChange={(e) => setNewCustomLabel(e.target.value)}
-              placeholder="যেমন: ২ লিটার পানি পান"
-              className="w-full h-10 border rounded-xl px-3 text-sm mb-4 outline-none"
-            />
+            <h3 className="font-bold text-sm mb-2">নতুন কাস্টম টাস্ক নাম</h3>
+            <input value={newCustomLabel} onChange={(e) => setNewCustomLabel(e.target.value)} placeholder="যেমন: ২ লিটার পানি পান" className="w-full h-9 border rounded-xl px-3 text-xs mb-3 outline-none" />
             <div className="flex gap-2">
-              <button onClick={handleAddCustomField} className="flex-1 h-9 bg-emerald-800 text-white rounded-xl text-xs font-semibold">যোগ করুন</button>
-              <button onClick={() => setShowAddCustom(false)} className="flex-1 h-9 border rounded-xl text-xs font-semibold">বাতিল</button>
+              <button onClick={handleAddCustomField} className="flex-1 h-8 bg-emerald-800 text-white rounded-xl text-xs font-semibold">যোগ করুন</button>
+              <button onClick={() => setShowAddCustom(false)} className="flex-1 h-8 border rounded-xl text-xs font-semibold">বাতিল</button>
             </div>
           </div>
         </div>
@@ -675,6 +981,7 @@ function FieldGroup({ title, fields, entry, onChange, member }) {
             <span className="text-sm" style={{ color: "#33443A" }}>{f.label}</span>
             {f.type === "bool" && <BoolToggle value={!!entry[f.key]} onChange={(v) => onChange(f.key, v)} />}
             {f.type === "count" && <CountStepper value={entry[f.key]} max={f.max} onChange={(v) => onChange(f.key, v)} />}
+            {f.type === "number" && <NumberField value={entry[f.key]} target={f.target} onChange={(v) => onChange(f.key, v)} />}
           </div>
         ))}
       </div>
