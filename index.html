@@ -32,7 +32,7 @@
   @media print {
     @page { 
       size: A4 portrait; 
-      margin: 10mm 10mm 10mm 15mm !important; /* বামে ১৫মিমি ফাকা বাইন্ডিং/পাঞ্চের জন্য */
+      margin: 10mm 10mm 10mm 15mm !important;
     }
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff !important; }
     .no-print { display: none !important; }
@@ -446,7 +446,6 @@ function NumberField({ value, onChange, disabled, target }) {
   );
 }
 
-// ৪) গ্রাফের লেবেল ও সংখ্যা সম্পূর্ণ ইংরেজিতে (English)
 function ProgressChart({ monthEntries, totalDays, member, allFields }) {
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
@@ -458,7 +457,7 @@ function ProgressChart({ monthEntries, totalDays, member, allFields }) {
     const scores = [];
 
     for (let d = 1; d <= totalDays; d++) {
-      labels.push(String(d)); // English numbers
+      labels.push(String(d));
       const e = monthEntries[pad2(d)];
       const s = dailyScore(e, member, allFields);
       scores.push(s !== null ? Math.round(s * 100) : 0);
@@ -504,7 +503,6 @@ function ProgressChart({ monthEntries, totalDays, member, allFields }) {
     };
   }, [monthEntries, totalDays, member, allFields]);
 
-  // ৫) গ্রাফ কিছুটা ছোট সাইজ করা হয়েছে (h-32)
   return (
     <div className="w-full h-32 mt-2">
       <canvas ref={chartRef}></canvas>
@@ -541,7 +539,6 @@ function App() {
   const [savingWeekly, setSavingWeekly] = useState(false);
   const [weeklySavedTick, setWeeklySavedTick] = useState(false);
 
-  // ৬) পারিবারিক সভার ক্ষেত্রে ডিফল্ট হিসেবে শুধু ১ নম্বর ক্রম রাখা হয়েছে
   const [meetingState, setMeetingState] = useState({
     meetingSubHeader: "",
     meetingDate: "",
@@ -550,7 +547,6 @@ function App() {
   const [savingMeeting, setSavingMeeting] = useState(false);
   const [meetingSavedTick, setMeetingSavedTick] = useState(false);
 
-  // MENU & MODALS STATE
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -617,7 +613,6 @@ function App() {
     refreshWeekly();
   }, [refreshWeekly]);
 
-  // REAL-TIME AUTO-SYNC FOR FAMILY MEETING DATA
   useEffect(() => {
     const docKey = meetingKey(monthCursor.year, monthCursor.month0);
     const docRef = db.collection(getCollectionName()).doc(docKey);
@@ -633,7 +628,7 @@ function App() {
           meetingSubHeader: `${BN_MONTHS[monthCursor.month0]}'${toBn(monthCursor.year)}`,
           meetingDate: "",
           rows: [
-            { id: "1", topic: "", decision: "", person: "" } // শুধু ১ নম্বর সারি
+            { id: "1", topic: "", decision: "", person: "" }
           ]
         });
       }
@@ -690,7 +685,6 @@ function App() {
     setTimeout(() => setCopiedCode(false), 2000);
   }
 
-  // ১) কাস্টম ফ্যামিলি কোড সেভ
   function handleSaveCustomFamilyCode() {
     if (customFamCodeInput.trim()) {
       setFamilyCode(customFamCodeInput.trim());
@@ -810,7 +804,6 @@ function App() {
 
   if (members === null) return <div className="min-h-screen flex items-center justify-center bg-[#F4F7F1]"><Loader2 className="animate-spin" color="#0E4B43" size={32} /></div>;
 
-  // ২) পিডিএফ প্রিন্ট মোড - ২ পেজে লেআউট ও দাওয়াহ সহ সব কলাম দৃশ্যমান
   if (printMode) {
     const total = monthStats.total;
     const rows = Array.from({ length: total }, (_, i) => i + 1);
@@ -833,7 +826,6 @@ function App() {
             <button onClick={() => window.print()} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}><Printer size={14} /> প্রিন্ট / PDF ডাউনলোড (২টি পেজ)</button>
           </div>
           
-          <!-- ৩) দ্বীন/দুনিয়া হেডিং বাদ দেওয়া হয়েছে -->
           <div style={{ borderBottom: "2px solid #0E4B43", paddingBottom: "4px", marginBottom: "6px" }} className="flex justify-between items-end">
             <div>
               <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 15, fontWeight: 700, margin: 0, color: "#0E4B43" }}>মাসিক আমল ও পারফরম্যান্স রিপোর্ট</h1>
@@ -886,13 +878,11 @@ function App() {
         {/* PAGE 2: Graph & Family Meeting */}
         <div className="page-break w-full mx-auto" style={{ paddingTop: "8mm" }}>
           
-          {/* ৪ & ৫) ছোট সাইজের গ্রাফ */}
           <div style={{ border: "1px solid #ddd", padding: "8px", borderRadius: "8px", marginBottom: "15px" }}>
             <h3 style={{ fontSize: "12px", fontWeight: "bold", margin: "0 0 6px 0", color: "#0E4B43" }}>মাসিক অগ্রগতি গ্রাফ (Monthly Progress)</h3>
             <ProgressChart monthEntries={monthEntries} totalDays={monthStats.total} member={selectedMember} allFields={allFields} />
           </div>
 
-          <!-- ৬) পারিবারিক সভা (১ নম্বর ক্রম সহ) -->
           <div style={{ textAlign: "center", marginBottom: "12px", position: "relative" }}>
             <h2 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 20, fontWeight: 700, margin: 0, color: "#000" }}>
               মাসিক পারিবারিক সভা ও সিদ্ধান্ত
@@ -1186,10 +1176,8 @@ function App() {
               <button onClick={() => setPrintMode(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-100 hover:bg-emerald-100 transition-all"><Printer size={13} /> PDF / প্রিন্ট (২ পেজ)</button>
             </div>
 
-            {/* ৪ & ৫) ছোট করার গ্রাফ */}
             <ProgressChart monthEntries={monthEntries} totalDays={monthStats.total} member={selectedMember} allFields={allFields} />
 
-            {/* ৫) ছোট সাইজের ক্যালেন্ডার ভিউ */}
             <div className="max-w-xs mx-auto mt-4">
               <div className="grid grid-cols-7 gap-1">
                 {BN_WEEKDAYS.map((w) => (<div key={w} className="text-center text-[9px] font-bold text-slate-400">{w}</div>))}
@@ -1335,7 +1323,7 @@ function App() {
         </div>
       </div>
 
-      {/* ১) কাস্টম ফ্যামিলি কোড তৈরি/পরিবর্তন মডাল */}
+      {/* Custom Family Code Modal */}
       {showFamilyCodeModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50">
           <div className="bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100">
