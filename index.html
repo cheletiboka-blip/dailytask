@@ -17,6 +17,9 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+<!-- Chart.js for Visual Progress -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <!-- Firebase compat libraries -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -42,7 +45,6 @@
   const db = firebase.firestore();
   db.enablePersistence().catch(() => {});
 
-  // Get or Set Family Code for Privacy
   function getFamilyCode() {
     let code = localStorage.getItem("family_code");
     if (!code) {
@@ -59,7 +61,6 @@
 
   const getCollectionName = () => `data_${getFamilyCode()}`;
 
-  // Dynamic appStorage Shim
   const appStorage = {
     async get(key, shared) {
       if (!shared) {
@@ -103,6 +104,7 @@
     }
   };
 
+  // PWA Service Worker Registration
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -111,7 +113,7 @@
 </script>
 
 <script type="text/babel">
-const { useState, useEffect, useCallback, useMemo } = React;
+const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
 function Icon({ children, size = 18, color = "currentColor", className, style }) {
   return (
@@ -122,33 +124,17 @@ function Icon({ children, size = 18, color = "currentColor", className, style })
     </svg>
   );
 }
-function Plus({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Icon>;
-}
-function ChevronLeft({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><polyline points="15 18 9 12 15 6"/></Icon>;
-}
-function ChevronRight({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><polyline points="9 18 15 12 9 6"/></Icon>;
-}
-function Printer({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></Icon>;
-}
-function Check({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><polyline points="20 6 9 17 4 12"/></Icon>;
-}
-function X({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>;
-}
-function User({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></Icon>;
-}
-function CalIcon({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Icon>;
-}
-function KeyIcon({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><path d="M21 2l-2 2m-1.5 1.5l-3 3m-2 2l-3 3m-2 2l-3 3M3 21l3-3m0 0l2 2m-2-2l-2-2"/></Icon>;
-}
+function Plus({ size, color, className }) { return <Icon size={size} color={color} className={className}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Icon>; }
+function ChevronLeft({ size, color, className }) { return <Icon size={size} color={color} className={className}><polyline points="15 18 9 12 15 6"/></Icon>; }
+function ChevronRight({ size, color, className }) { return <Icon size={size} color={color} className={className}><polyline points="9 18 15 12 9 6"/></Icon>; }
+function Printer({ size, color, className }) { return <Icon size={size} color={color} className={className}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></Icon>; }
+function Check({ size, color, className }) { return <Icon size={size} color={color} className={className}><polyline points="20 6 9 17 4 12"/></Icon>; }
+function X({ size, color, className }) { return <Icon size={size} color={color} className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>; }
+function User({ size, color, className }) { return <Icon size={size} color={color} className={className}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></Icon>; }
+function CalIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Icon>; }
+function KeyIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><path d="M21 2l-2 2m-1.5 1.5l-3 3m-2 2l-3 3m-2 2l-3 3M3 21l3-3m0 0l2 2m-2-2l-2-2"/></Icon>; }
+function DownloadIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></Icon>; }
+function UploadIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></Icon>; }
 function Loader2({ size, color, className }) {
   return (
     <Icon size={size} color={color} className={className}>
@@ -173,7 +159,7 @@ function useFonts() {
   }, []);
 }
 
-const DEEN_FIELDS = [
+const DEFAULT_DEEN_FIELDS = [
   { key: "fardPrayers", label: "ফরজ কাযা নামাজ (কয়টি?)", shortLabel: "ফরজ কাযা", type: "count", max: 5 },
   { key: "jamaat", label: "জামাতে নামাজ (কয় ওয়াক্ত?)", shortLabel: "জামাতে নামাজ", type: "count", max: 5, appliesTo: "male" },
   { key: "sunnahNafl", label: "সুন্নত/নফল নামাজ", shortLabel: "সুন্নত/নফল", type: "bool" },
@@ -186,7 +172,7 @@ const DEEN_FIELDS = [
   { key: "sadaqah", label: "সাদাকা/দান", shortLabel: "সাদাকা/দান", type: "bool" },
 ];
 
-const DUNIYA_FIELDS = [
+const DEFAULT_DUNIYA_FIELDS = [
   { key: "earlyMorning", label: "ভোরের বরকতময় সময়কে কাজে লাগানো", shortLabel: "ভোরের সময়", type: "bool" },
   { key: "exercise", label: "ব্যায়াম/শরীরচর্চা", shortLabel: "ব্যায়াম", type: "bool" },
   { key: "healthyFood", label: "স্বাস্থ্যকর খাবার", shortLabel: "স্বাস্থ্যকর খাবার", type: "bool" },
@@ -196,9 +182,6 @@ const DUNIYA_FIELDS = [
   { key: "noProcrastination", label: "অলসতা/কাজ ফেলে না রাখা", shortLabel: "অলসতা রোধ", type: "bool" },
   { key: "phoneOffBy11", label: "রাত ১১টার মধ্যে ফোন/ইন্টারনেট বন্ধ", shortLabel: "১১টায় ফোন অফ", type: "bool" },
 ];
-
-const ALL_FIELDS = [...DEEN_FIELDS, ...DUNIYA_FIELDS];
-const SCORED_FIELDS = ALL_FIELDS.filter((f) => !f.info);
 
 function fieldApplies(field, member) {
   if (!field.appliesTo) return true;
@@ -220,11 +203,11 @@ function dateKey(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad
 function monthPrefix(year, month0) { return `${year}-${pad2(month0 + 1)}`; }
 function daysInMonth(year, month0) { return new Date(year, month0 + 1, 0).getDate(); }
 
-function dailyScore(entry, member) {
+function dailyScore(entry, member, allFields) {
   if (!entry) return null;
   let sum = 0;
   let count = 0;
-  for (const f of SCORED_FIELDS) {
+  for (const f of allFields) {
     if (!fieldApplies(f, member)) continue;
     count += 1;
     if (f.type === "bool") {
@@ -251,48 +234,26 @@ function scoreColor(score) {
   return "#E7EEE3";
 }
 
-function fieldPercent(field, monthEntries, totalDays, member) {
-  if (!fieldApplies(field, member)) return null;
-  let hit = 0;
-  let daysCounted = totalDays;
-  if (field.type === "count") {
-    let sum = 0;
-    for (let d = 1; d <= totalDays; d++) {
-      const e = monthEntries[pad2(d)];
-      sum += Math.min(field.max, Number(e?.[field.key]) || 0);
+function calculateStreak(monthEntries, member) {
+  let streak = 0;
+  const today = new Date();
+  const d = new Date(today);
+
+  for (let i = 0; i < 365; i++) {
+    const dayStr = pad2(d.getDate());
+    const entry = monthEntries[dayStr];
+    
+    // Check if score is above 50% for positive streak
+    if (entry && dailyScore(entry, member, [...DEFAULT_DEEN_FIELDS, ...DEFAULT_DUNIYA_FIELDS]) >= 0.5) {
+      streak++;
+    } else if (i > 0) {
+      break; 
     }
-    return Math.round((sum / (totalDays * field.max)) * 100);
+    d.setDate(d.getDate() - 1);
   }
-  if (field.type === "number" && field.target) {
-    let sum = 0;
-    for (let d = 1; d <= totalDays; d++) {
-      const e = monthEntries[pad2(d)];
-      sum += Math.min(field.target, Number(e?.[field.key]) || 0);
-    }
-    return Math.round((sum / (totalDays * field.target)) * 100);
-  }
-  for (let d = 1; d <= totalDays; d++) {
-    const e = monthEntries[pad2(d)];
-    if (!e) continue;
-    if (field.type === "bool" && e[field.key]) hit += 1;
-    if (field.type === "number" && !field.target && Number(e[field.key]) > 0) hit += 1;
-    if (field.type === "time" && e[field.key]) hit += 1;
-  }
-  return Math.round((hit / daysCounted) * 100);
+  return streak;
 }
 
-function weeklyKey(memberId, year, month0) {
-  return `weekly:${memberId}:${monthPrefix(year, month0)}`;
-}
-async function loadWeekly(memberId, year, month0) {
-  try {
-    const res = await appStorage.get(weeklyKey(memberId, year, month0), true);
-    return res ? JSON.parse(res.value) : {};
-  } catch { return {}; }
-}
-async function saveWeekly(memberId, year, month0, data) {
-  await appStorage.set(weeklyKey(memberId, year, month0), JSON.stringify(data), true);
-}
 async function loadMembers() {
   try {
     const res = await appStorage.get("members", true);
@@ -301,6 +262,15 @@ async function loadMembers() {
 }
 async function saveMembers(members) {
   await appStorage.set("members", JSON.stringify(members), true);
+}
+async function loadCustomFields() {
+  try {
+    const res = await appStorage.get("custom_fields", true);
+    return res ? JSON.parse(res.value) : [];
+  } catch { return []; }
+}
+async function saveCustomFields(fields) {
+  await appStorage.set("custom_fields", JSON.stringify(fields), true);
 }
 async function loadEntry(memberId, key) {
   try {
@@ -386,39 +356,66 @@ function CountStepper({ value, onChange, max, disabled }) {
   );
 }
 
-function NumberField({ value, onChange, disabled, target }) {
-  return (
-    <div className="flex items-center gap-1">
-      <input
-        type="number"
-        min="0"
-        inputMode="decimal"
-        disabled={disabled}
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="০"
-        className="w-16 h-9 rounded-lg border px-2 text-right outline-none"
-        style={{ borderColor: "#D8DED3", fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}
-      />
-      {target ? (
-        <span className="text-xs" style={{ color: "#8A9A8F", fontFamily: "'IBM Plex Mono', monospace" }}>
-          /{toBn(target)}
-        </span>
-      ) : null}
-    </div>
-  );
-}
+function ProgressChart({ monthEntries, totalDays, member, allFields }) {
+  const chartRef = useRef(null);
+  const chartInstance = useRef(null);
 
-function TimeField({ value, onChange, disabled }) {
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    const labels = [];
+    const scores = [];
+
+    for (let d = 1; d <= totalDays; d++) {
+      labels.push(toBn(d));
+      const e = monthEntries[pad2(d)];
+      const s = dailyScore(e, member, allFields);
+      scores.push(s !== null ? Math.round(s * 100) : 0);
+    }
+
+    if (chartInstance.current) {
+      chartInstance.current.destroy();
+    }
+
+    const ctx = chartRef.current.getContext("2d");
+    chartInstance.current = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "দৈনিক পারফরম্যান্স (%)",
+            data: scores,
+            borderColor: "#0E4B43",
+            backgroundColor: "rgba(14, 75, 67, 0.1)",
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+            pointBackgroundColor: "#C89B3C",
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { min: 0, max: 100, ticks: { stepSize: 25 } },
+        },
+        plugins: {
+          legend: { display: false },
+        },
+      },
+    });
+
+    return () => {
+      if (chartInstance.current) chartInstance.current.destroy();
+    };
+  }, [monthEntries, totalDays, member, allFields]);
+
   return (
-    <input
-      type="time"
-      disabled={disabled}
-      value={value || ""}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-28 h-9 rounded-lg border px-2 text-right outline-none"
-      style={{ borderColor: "#D8DED3", fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}
-    />
+    <div className="w-full h-40 mt-3">
+      <canvas ref={chartRef}></canvas>
+    </div>
   );
 }
 
@@ -432,6 +429,10 @@ function App() {
   const [newGender, setNewGender] = useState("male");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
+  const [customFields, setCustomFields] = useState([]);
+  const [newCustomLabel, setNewCustomLabel] = useState("");
+  const [showAddCustom, setShowAddCustom] = useState(false);
+
   const [viewDate, setViewDate] = useState(new Date());
   const [entry, setEntry] = useState({});
   const [saving, setSaving] = useState(false);
@@ -444,20 +445,15 @@ function App() {
   });
   const [monthEntries, setMonthEntries] = useState({});
   const [loadingMonth, setLoadingMonth] = useState(false);
-  const [printMode, setPrintMode] = useState(false);
-
-  const [weekly, setWeekly] = useState({});
-  const [loadingWeekly, setLoadingWeekly] = useState(false);
-  const [savingWeekly, setSavingWeekly] = useState(false);
-  const [weeklySavedTick, setWeeklySavedTick] = useState(false);
-
   const [showCodeModal, setShowCodeModal] = useState(false);
-  const [inputCode, setInputCode] = useState("");
 
   useEffect(() => {
     (async () => {
       const m = await loadMembers();
       setMembers(m);
+      const cf = await loadCustomFields();
+      setCustomFields(cf);
+
       let last = null;
       try {
         const r = await appStorage.get("last-selected-member", false);
@@ -470,6 +466,10 @@ function App() {
       }
     })();
   }, []);
+
+  const allFields = useMemo(() => {
+    return [...DEFAULT_DEEN_FIELDS, ...DEFAULT_DUNIYA_FIELDS, ...customFields];
+  }, [customFields]);
 
   const selectedMember = useMemo(
     () => (members || []).find((m) => m.id === selectedId) || null,
@@ -498,33 +498,15 @@ function App() {
     refreshMonth();
   }, [refreshMonth]);
 
-  const refreshWeekly = useCallback(() => {
-    if (!selectedId) return;
-    setLoadingWeekly(true);
-    loadWeekly(selectedId, monthCursor.year, monthCursor.month0).then((data) => {
-      setWeekly(data);
-      setLoadingWeekly(false);
-    });
-  }, [selectedId, monthCursor]);
-
-  useEffect(() => {
-    refreshWeekly();
-  }, [refreshWeekly]);
-
-  function updateWeekly(weekIdx, field, value) {
-    setWeekly((prev) => ({
-      ...prev,
-      [weekIdx]: { ...(prev[weekIdx] || {}), [field]: value },
-    }));
-  }
-
-  async function handleSaveWeekly() {
-    if (!selectedId) return;
-    setSavingWeekly(true);
-    await saveWeekly(selectedId, monthCursor.year, monthCursor.month0, weekly);
-    setSavingWeekly(false);
-    setWeeklySavedTick(true);
-    setTimeout(() => setWeeklySavedTick(false), 1600);
+  async function handleAddCustomField() {
+    if (!newCustomLabel.trim()) return;
+    const key = `custom_${Date.now()}`;
+    const newField = { key, label: newCustomLabel.trim(), shortLabel: newCustomLabel.trim(), type: "bool", isCustom: true };
+    const updated = [...customFields, newField];
+    setCustomFields(updated);
+    setNewCustomLabel("");
+    setShowAddCustom(false);
+    await saveCustomFields(updated);
   }
 
   async function handleAddMember() {
@@ -538,34 +520,6 @@ function App() {
     setNewGender("male");
     setAddingMember(false);
     await saveMembers(next);
-    try {
-      await appStorage.set("last-selected-member", JSON.stringify(id), false);
-    } catch {}
-  }
-
-  async function handleDeleteMember(id) {
-    const next = (members || []).filter((m) => m.id !== id);
-    setMembers(next);
-    setConfirmDeleteId(null);
-    await saveMembers(next);
-    if (selectedId === id) {
-      const fallback = next.length ? next[0].id : null;
-      setSelectedId(fallback);
-      try {
-        if (fallback) {
-          await appStorage.set("last-selected-member", JSON.stringify(fallback), false);
-        } else {
-          await appStorage.delete("last-selected-member", false);
-        }
-      } catch {}
-    }
-  }
-
-  async function handleSelectMember(id) {
-    setSelectedId(id);
-    try {
-      await appStorage.set("last-selected-member", JSON.stringify(id), false);
-    } catch {}
   }
 
   function updateField(key, value) {
@@ -582,13 +536,7 @@ function App() {
     refreshMonth();
   }
 
-  function changeDay(delta) {
-    const d = new Date(viewDate);
-    d.setDate(d.getDate() + delta);
-    setViewDate(d);
-  }
-
-  const isToday = dateKey(viewDate) === dateKey(new Date());
+  const streak = useMemo(() => calculateStreak(monthEntries, selectedMember), [monthEntries, selectedMember]);
 
   const monthStats = useMemo(() => {
     const total = daysInMonth(monthCursor.year, monthCursor.month0);
@@ -596,7 +544,7 @@ function App() {
     let scoreSum = 0;
     for (let d = 1; d <= total; d++) {
       const e = monthEntries[pad2(d)];
-      const s = dailyScore(e, selectedMember);
+      const s = dailyScore(e, selectedMember, allFields);
       if (s !== null) {
         filled += 1;
         scoreSum += s;
@@ -604,169 +552,14 @@ function App() {
     }
     const avg = filled ? scoreSum / filled : 0;
     return { total, filled, avgPct: Math.round(avg * 100) };
-  }, [monthEntries, monthCursor, selectedMember]);
+  }, [monthEntries, monthCursor, selectedMember, allFields]);
 
-  if (members === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F4F7F1" }}>
-        <Loader2 className="animate-spin" color="#0E4B43" size={28} />
-      </div>
-    );
-  }
-
-  if (members.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}>
-        <div className="w-full max-w-sm text-center">
-          <div className="flex justify-center mb-3">
-            <StarMark size={34} />
-          </div>
-          <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>
-            Daily Task
-          </h1>
-          <p className="mb-6" style={{ color: "#4B5A50" }}>
-            শুরু করতে পরিবারের প্রথম সদস্যের নাম দিন
-          </p>
-          <div className="flex flex-col gap-3 items-center">
-            <div className="flex gap-2 w-full">
-              <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddMember()}
-                placeholder="নাম লিখুন"
-                className="flex-1 h-12 rounded-xl border px-4 outline-none"
-                style={{ borderColor: "#D8DED3", background: "#fff" }}
-                autoFocus
-              />
-            </div>
-            <GenderToggle value={newGender} onChange={setNewGender} />
-            <button onClick={handleAddMember} className="h-12 px-5 rounded-xl font-semibold text-white w-full" style={{ background: "#0E4B43" }}>
-              যোগ করুন
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Optimized Single-Page Print View with Punch Hole Margin (20mm Left Margin)
-  if (printMode) {
-    const total = monthStats.total;
-    const rows = Array.from({ length: total }, (_, i) => i + 1);
-    return (
-      <div style={{ fontFamily: "'Noto Sans Bengali', sans-serif", color: "#111" }}>
-        <style>{`
-          @media print {
-            @page { 
-              size: A4 landscape; 
-              margin: 6mm 6mm 6mm 20mm !important; /* File punch left margin */
-            }
-            body { 
-              -webkit-print-color-adjust: exact; 
-              print-color-adjust: exact; 
-              background: #fff !important; 
-            }
-            .no-print { display: none !important; }
-          }
-          table { border-collapse: collapse; width: 100%; table-layout: fixed; }
-          th, td { border: 1px solid #333; padding: 2px 1px; font-size: 8px; text-align: center; vertical-align: middle; }
-          th { 
-            background: #0E4B43 !important; 
-            color: #fff !important; 
-            font-weight: 600; 
-            font-size: 7.5px; 
-            line-height: 1.15; 
-            height: 40px;
-            white-space: normal !important;
-            word-wrap: break-word !important;
-            word-break: break-word !important;
-          }
-          tr { height: 17px; }
-          tbody tr:nth-child(even) { background-color: #f8faf7; }
-        `}</style>
-        <div className="p-2 w-full mx-auto" style={{ paddingLeft: "5mm" }}>
-          <div className="flex items-center justify-between mb-2 no-print">
-            <button onClick={() => setPrintMode(false)} className="px-3 py-1.5 rounded-lg border text-sm font-semibold" style={{ borderColor: "#D8DED3" }}>
-              ← ফিরে যান
-            </button>
-            <button onClick={() => window.print()} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}>
-              <Printer size={14} /> প্রিন্ট / PDF
-            </button>
-          </div>
-          
-          {/* PDF Header Section */}
-          <div style={{ borderBottom: "2px solid #0E4B43", paddingBottom: "4px", marginBottom: "6px" }} className="flex justify-between items-end">
-            <div>
-              <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 16, fontWeight: 700, margin: 0, color: "#0E4B43" }}>
-                Daily Task — দ্বীন ও দুনিয়া ট্র্যাকার
-              </h1>
-              <p style={{ fontSize: 10, margin: "2px 0 0 0", color: "#444" }}>
-                মাস: <b>{BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}</b> &nbsp;|&nbsp; সদস্য: <b>{selectedMember?.name}</b>
-              </p>
-            </div>
-            <div style={{ fontSize: 10, textAlign: "right", color: "#333" }}>
-              পূরণ করা দিন: <b>{toBn(monthStats.filled)}/{toBn(total)}</b> &nbsp;|&nbsp; গড় স্কোর: <b>{toBn(monthStats.avgPct)}%</b>
-            </div>
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: "24px" }}>তাং</th>
-                {ALL_FIELDS.map((f) => (
-                  <th key={f.key}>{f.shortLabel || f.label}</th>
-                ))}
-                <th style={{ width: "30px" }}>স্কোর</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((d) => {
-                const e = monthEntries[pad2(d)];
-                const s = dailyScore(e, selectedMember);
-                return (
-                  <tr key={d}>
-                    <td style={{ fontWeight: 700, background: "#f0f4f1" }}>{toBn(d)}</td>
-                    {ALL_FIELDS.map((f) => {
-                      if (!fieldApplies(f, selectedMember)) return <td key={f.key} style={{ color: "#ccc" }}>—</td>;
-                      if (!e) return <td key={f.key}></td>;
-                      const v = e[f.key];
-                      let disp = "";
-                      if (f.type === "bool") disp = v ? "✓" : "";
-                      else disp = v !== undefined && v !== "" ? toBn(v) : "";
-                      return <td key={f.key} style={{ color: f.type === "bool" && v ? "#0E4B43" : "#111", fontWeight: f.type === "bool" && v ? "bold" : "normal" }}>{disp}</td>;
-                    })}
-                    <td style={{ fontWeight: 700, background: "#f0f4f1" }}>{s === null ? "" : toBn(Math.round(s * 100)) + "%"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr style={{ background: "#E7EEE3", fontWeight: 700 }}>
-                <td>%</td>
-                {ALL_FIELDS.map((f) => {
-                  const pct = fieldPercent(f, monthEntries, total, selectedMember);
-                  return <td key={f.key}>{pct === null ? "—" : toBn(pct) + "%"}</td>;
-                })}
-                <td>{toBn(monthStats.avgPct)}%</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-    );
-  }
-
-  const total = monthStats.total;
-  const firstOfMonth = new Date(monthCursor.year, monthCursor.month0, 1);
-  const leadBlanks = firstOfMonth.getDay();
+  if (members === null) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" color="#0E4B43" size={28} /></div>;
 
   return (
     <div className="min-h-screen pb-16" style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}>
       {/* Header */}
       <div style={{ background: "#0E4B43" }} className="px-5 pt-6 pb-8 relative overflow-hidden">
-        <div className="absolute -right-6 -top-6 opacity-10">
-          <StarMark size={140} color="#F4F7F1" />
-        </div>
         <div className="relative flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <StarMark size={20} />
@@ -774,305 +567,96 @@ function App() {
               Daily Task
             </h1>
           </div>
-          {/* Privacy Code Settings */}
-          <button
-            onClick={() => setShowCodeModal(true)}
-            className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full text-white/80 border border-white/20 hover:bg-white/10"
-          >
+          
+          <button onClick={() => setShowCodeModal(true)} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full text-white/80 border border-white/20">
             <KeyIcon size={12} /> ফ্যামিলি কোড
           </button>
         </div>
-        <p className="relative text-sm" style={{ color: "#C7D6CD" }}>
-          দ্বীন ও দুনিয়ার ব্যালেন্স ট্র্যাকার
-        </p>
 
-        {/* Member selector */}
-        <div className="relative flex gap-2 mt-5 flex-wrap">
-          {members.map((m) =>
-            confirmDeleteId === m.id ? (
-              <div key={m.id} className="px-2.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5" style={{ background: "rgba(255,255,255,0.12)", color: "#F4F7F1" }}>
-                <span>{m.name} মুছবেন?</span>
-                <button onClick={() => handleDeleteMember(m.id)} className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "#C1666B" }}>
-                  <Check size={13} color="#fff" />
-                </button>
-                <button onClick={() => setConfirmDeleteId(null)} className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.2)" }}>
-                  <X size={13} color="#fff" />
-                </button>
-              </div>
-            ) : (
-              <button
-                key={m.id}
-                onClick={() => handleSelectMember(m.id)}
-                className="pl-3 pr-1.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5 transition-all"
-                style={{
-                  background: m.id === selectedId ? "#C89B3C" : "rgba(255,255,255,0.12)",
-                  color: m.id === selectedId ? "#16302B" : "#F4F7F1",
-                }}
-              >
-                <User size={13} /> {m.name}
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmDeleteId(m.id);
-                  }}
-                  className="w-5 h-5 rounded-full flex items-center justify-center ml-0.5"
-                  style={{ background: "rgba(0,0,0,0.12)" }}
-                >
-                  <X size={11} color={m.id === selectedId ? "#16302B" : "#F4F7F1"} />
-                </span>
-              </button>
-            )
-          )}
-          {!addingMember ? (
-            <button onClick={() => setAddingMember(true)} className="px-3 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1" style={{ background: "rgba(255,255,255,0.12)", color: "#F4F7F1" }}>
-              <Plus size={14} /> সদস্য
+        {/* Streak Counter */}
+        <div className="mt-3 flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl w-fit">
+          <span className="text-lg">🔥</span>
+          <span className="text-xs font-semibold text-white">ধারাবাহিক স্ট্রিক: {toBn(streak)} দিন</span>
+        </div>
+
+        {/* Member Selector */}
+        <div className="relative flex gap-2 mt-4 flex-wrap">
+          {members.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setSelectedId(m.id)}
+              className="px-3 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1"
+              style={{ background: m.id === selectedId ? "#C89B3C" : "rgba(255,255,255,0.12)", color: m.id === selectedId ? "#16302B" : "#F4F7F1" }}
+            >
+              <User size={13} /> {m.name}
             </button>
-          ) : (
-            <div className="flex flex-col gap-1.5 p-2 rounded-2xl" style={{ background: "rgba(255,255,255,0.12)" }}>
-              <div className="flex gap-1">
-                <input
-                  autoFocus
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddMember()}
-                  placeholder="নাম"
-                  className="w-24 px-2 rounded-full text-sm outline-none"
-                  style={{ border: "none" }}
-                />
-                <button onClick={handleAddMember} className="px-3 rounded-full text-sm font-semibold" style={{ background: "#C89B3C", color: "#16302B" }}>
-                  ঠিক আছে
-                </button>
-              </div>
-              <GenderToggle value={newGender} onChange={setNewGender} light />
-            </div>
-          )}
+          ))}
         </div>
       </div>
 
-      {/* Date nav */}
+      {/* Date Nav */}
       <div className="px-5 -mt-4">
         <div className="bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center justify-between" style={{ border: "1px solid #E7EEE3" }}>
-          <button onClick={() => changeDay(-1)} className="w-9 h-9 flex items-center justify-center rounded-full" style={{ background: "#F4F7F1" }}>
-            <ChevronLeft size={18} color="#0E4B43" />
+          <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() - 1)))} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100">
+            <ChevronLeft size={16} />
           </button>
-          <div className="text-center">
-            <div className="font-semibold" style={{ color: "#16302B" }}>
-              {isToday ? "আজ" : BN_WEEKDAYS[viewDate.getDay()]} · {toBn(viewDate.getDate())} {BN_MONTHS[viewDate.getMonth()]} {toBn(viewDate.getFullYear())}
-            </div>
+          <div className="font-semibold text-sm" style={{ color: "#16302B" }}>
+            {toBn(viewDate.getDate())} {BN_MONTHS[viewDate.getMonth()]} {toBn(viewDate.getFullYear())}
           </div>
-          <button onClick={() => changeDay(1)} className="w-9 h-9 flex items-center justify-center rounded-full" style={{ background: "#F4F7F1" }}>
-            <ChevronRight size={18} color="#0E4B43" />
+          <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() + 1)))} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100">
+            <ChevronRight size={16} />
           </button>
         </div>
       </div>
 
-      {/* Entry form */}
+      {/* Entry Forms */}
       <div className="px-5 mt-5 space-y-4">
-        {loadingEntry ? (
-          <div className="flex justify-center py-10">
-            <Loader2 className="animate-spin" color="#0E4B43" size={22} />
-          </div>
-        ) : (
-          <>
-            <FieldGroup title="দ্বীন" fields={DEEN_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
-            <FieldGroup title="দুনিয়া" fields={DUNIYA_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
-
-            <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-              <label className="block text-sm font-semibold mb-2" style={{ color: "#16302B" }}>
-                দিনের নোট / আত্ম-সমালোচনা
-              </label>
-              <textarea
-                value={entry.note || ""}
-                onChange={(e) => updateField("note", e.target.value)}
-                rows={3}
-                placeholder="আজকের অনুভূতি বা শিক্ষা লিখুন..."
-                className="w-full rounded-xl border p-3 outline-none resize-none"
-                style={{ borderColor: "#D8DED3" }}
-              />
-            </div>
-
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full h-12 rounded-xl font-bold text-white flex items-center justify-center gap-2"
-              style={{ background: savedTick ? "#4C8C74" : "#0E4B43" }}
-            >
-              {saving ? <Loader2 className="animate-spin" size={18} /> : savedTick ? <Check size={18} /> : null}
-              {savedTick ? "সেভ হয়েছে" : "সেভ করুন"}
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* Monthly overview */}
-      <div className="px-5 mt-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold flex items-center gap-1.5" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>
-            <CalIcon size={16} /> মাসিক ওভারভিউ
-          </h2>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setMonthCursor((c) => (c.month0 === 0 ? { year: c.year - 1, month0: 11 } : { year: c.year, month0: c.month0 - 1 }))}
-              className="w-7 h-7 flex items-center justify-center rounded-full bg-white"
-              style={{ border: "1px solid #E7EEE3" }}
-            >
-              <ChevronLeft size={14} color="#0E4B43" />
-            </button>
-            <span className="text-sm font-semibold px-1" style={{ color: "#16302B" }}>
-              {BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}
-            </span>
-            <button
-              onClick={() => setMonthCursor((c) => (c.month0 === 11 ? { year: c.year + 1, month0: 0 } : { year: c.year, month0: c.month0 + 1 }))}
-              className="w-7 h-7 flex items-center justify-center rounded-full bg-white"
-              style={{ border: "1px solid #E7EEE3" }}
-            >
-              <ChevronRight size={14} color="#0E4B43" />
-            </button>
-          </div>
-        </div>
-
+        <FieldGroup title="দ্বীন" fields={DEFAULT_DEEN_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
+        <FieldGroup title="দুনিয়া" fields={DEFAULT_DUNIYA_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
+        
+        {/* Custom Tasks Section */}
         <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-          <div className="flex items-center justify-between mb-4">
-            <Stat label="গড় স্কোর" value={`${toBn(monthStats.avgPct)}%`} />
-            <Stat label="পূরণ করা দিন" value={`${toBn(monthStats.filled)}/${toBn(total)}`} />
-            <button
-              onClick={() => setPrintMode(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold"
-              style={{ background: "#F4F7F1", color: "#0E4B43", border: "1px solid #E7EEE3" }}
-            >
-              <Printer size={14} /> PDF
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold" style={{ color: "#0E4B43" }}>কাস্টম টাস্ক (ব্যক্তিগত લક્ષ্য)</h3>
+            <button onClick={() => setShowAddCustom(true)} className="text-xs font-semibold text-emerald-800 flex items-center gap-1">
+              <Plus size={12} /> নতুন যোগ করুন
             </button>
           </div>
-
-          {loadingMonth ? (
-            <div className="flex justify-center py-6">
-              <Loader2 className="animate-spin" color="#0E4B43" size={18} />
+          {customFields.map((f) => (
+            <div key={f.key} className="flex items-center justify-between gap-3 py-1.5">
+              <span className="text-sm">{f.label}</span>
+              <BoolToggle value={!!entry[f.key]} onChange={(v) => updateField(f.key, v)} />
             </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-7 gap-1.5 mb-1">
-                {BN_WEEKDAYS.map((w) => (
-                  <div key={w} className="text-center text-[10px] font-semibold" style={{ color: "#8A9A8F" }}>
-                    {w}
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-1.5">
-                {Array.from({ length: leadBlanks }).map((_, i) => (
-                  <div key={"b" + i} />
-                ))}
-                {Array.from({ length: total }, (_, i) => i + 1).map((d) => {
-                  const e = monthEntries[pad2(d)];
-                  const s = dailyScore(e, selectedMember);
-                  const isSel = pad2(d) === pad2(viewDate.getDate()) && monthCursor.year === viewDate.getFullYear() && monthCursor.month0 === viewDate.getMonth();
-                  return (
-                    <button
-                      key={d}
-                      onClick={() => setViewDate(new Date(monthCursor.year, monthCursor.month0, d))}
-                      className="aspect-square rounded-lg flex items-center justify-center text-[11px] font-semibold relative"
-                      style={{
-                        background: scoreColor(s),
-                        color: s !== null && s >= 0.35 ? "#F4F7F1" : "#5A6A5F",
-                        outline: isSel ? "2px solid #16302B" : "none",
-                        outlineOffset: 1,
-                      }}
-                    >
-                      {toBn(d)}
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
+          ))}
         </div>
+
+        <button onClick={handleSave} className="w-full h-12 rounded-xl font-bold text-white flex items-center justify-center gap-2" style={{ background: "#0E4B43" }}>
+          {savedTick ? "সেভ হয়েছে!" : "সেভ করুন"}
+        </button>
       </div>
 
-      {/* Weekly reflection */}
+      {/* Visual Chart */}
       <div className="px-5 mt-8">
-        <h2 className="font-bold mb-3" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>
-          সাপ্তাহিক রিফ্লেকশন
-        </h2>
-        <div className="space-y-3">
-          {loadingWeekly ? (
-            <div className="flex justify-center py-4">
-              <Loader2 className="animate-spin" color="#0E4B43" size={18} />
-            </div>
-          ) : (
-            [1, 2, 3, 4, 5].map((w) => (
-              <div key={w} className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-                <div className="text-sm font-bold mb-2" style={{ color: "#0E4B43" }}>
-                  সপ্তাহ {toBn(w)}
-                </div>
-                <div className="space-y-2">
-                  <textarea
-                    value={weekly[w]?.good || ""}
-                    onChange={(e) => updateWeekly(w, "good", e.target.value)}
-                    placeholder="এই সপ্তাহে যা ভালো হয়েছে"
-                    rows={2}
-                    className="w-full rounded-lg border p-2 text-sm outline-none resize-none"
-                    style={{ borderColor: "#D8DED3" }}
-                  />
-                  <textarea
-                    value={weekly[w]?.gap || ""}
-                    onChange={(e) => updateWeekly(w, "gap", e.target.value)}
-                    placeholder="কোথায় ঘাটতি ছিল"
-                    rows={2}
-                    className="w-full rounded-lg border p-2 text-sm outline-none resize-none"
-                    style={{ borderColor: "#D8DED3" }}
-                  />
-                  <textarea
-                    value={weekly[w]?.plan || ""}
-                    onChange={(e) => updateWeekly(w, "plan", e.target.value)}
-                    placeholder="আগামী সপ্তাহে উন্নতির পরিকল্পনা"
-                    rows={2}
-                    className="w-full rounded-lg border p-2 text-sm outline-none resize-none"
-                    style={{ borderColor: "#D8DED3" }}
-                  />
-                </div>
-              </div>
-            ))
-          )}
-          <button
-            onClick={handleSaveWeekly}
-            disabled={savingWeekly}
-            className="w-full h-11 rounded-xl font-bold text-white flex items-center justify-center gap-2"
-            style={{ background: weeklySavedTick ? "#4C8C74" : "#0E4B43" }}
-          >
-            {savingWeekly ? <Loader2 className="animate-spin" size={16} /> : weeklySavedTick ? <Check size={16} /> : null}
-            {weeklySavedTick ? "সেভ হয়েছে" : "রিফ্লেকশন সেভ করুন"}
-          </button>
+        <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
+          <h2 className="font-bold text-sm mb-2" style={{ color: "#16302B" }}>মাসিক অগ্রগতি গ্রাফ</h2>
+          <ProgressChart monthEntries={monthEntries} totalDays={monthStats.total} member={selectedMember} allFields={allFields} />
         </div>
       </div>
 
-      {/* Privacy Code Modal */}
-      {showCodeModal && (
+      {/* Add Custom Field Modal */}
+      {showAddCustom && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-5 z-50">
           <div className="bg-white rounded-2xl p-5 w-full max-w-sm">
-            <h3 className="font-bold text-lg mb-2" style={{ color: "#16302B" }}>ফ্যামিলি সিকিউরিটি কোড</h3>
-            <p className="text-xs text-gray-600 mb-4">
-              আপনার বর্তমান কোড: <b className="text-emerald-800">{getFamilyCode()}</b><br/>
-              অন্য যেকোনো ডিভাইসে এই কোড দিলে আপনার পরিবারের ডাটা দেখতে পারবেন।
-            </p>
+            <h3 className="font-bold text-md mb-2">নতুন কাস্টম টাস্ক নাম লিখুন</h3>
             <input
-              value={inputCode}
-              onChange={(e) => setInputCode(e.target.value)}
-              placeholder="অন্য ফ্যামিলি কোড লিখুন"
-              className="w-full h-10 border rounded-xl px-3 text-sm mb-3 outline-none"
+              value={newCustomLabel}
+              onChange={(e) => setNewCustomLabel(e.target.value)}
+              placeholder="যেমন: ২ লিটার পানি পান"
+              className="w-full h-10 border rounded-xl px-3 text-sm mb-4 outline-none"
             />
             <div className="flex gap-2">
-              <button
-                onClick={() => setFamilyCode(inputCode)}
-                className="flex-1 h-10 rounded-xl text-white font-semibold text-sm"
-                style={{ background: "#0E4B43" }}
-              >
-                কোড সেট করুন
-              </button>
-              <button
-                onClick={() => setShowCodeModal(false)}
-                className="px-4 h-10 rounded-xl border text-sm font-semibold"
-              >
-                বন্ধ
-              </button>
+              <button onClick={handleAddCustomField} className="flex-1 h-9 bg-emerald-800 text-white rounded-xl text-xs font-semibold">যোগ করুন</button>
+              <button onClick={() => setShowAddCustom(false)} className="flex-1 h-9 border rounded-xl text-xs font-semibold">বাতিল</button>
             </div>
           </div>
         </div>
@@ -1081,72 +665,16 @@ function App() {
   );
 }
 
-function GenderToggle({ value, onChange, light }) {
-  const base = light
-    ? { off: "rgba(255,255,255,0.12)", offText: "#F4F7F1", on: "#C89B3C", onText: "#16302B" }
-    : { off: "#F4F7F1", offText: "#4B5A50", on: "#0E4B43", onText: "#fff" };
-  return (
-    <div className="flex rounded-xl overflow-hidden" style={{ border: `1px solid ${light ? "rgba(255,255,255,0.2)" : "#D8DED3"}` }}>
-      {[
-        { key: "male", label: "পুরুষ" },
-        { key: "female", label: "মহিলা" },
-      ].map((g) => (
-        <button
-          key={g.key}
-          type="button"
-          onClick={() => onChange(g.key)}
-          className="px-3 h-9 text-sm font-semibold"
-          style={{
-            background: value === g.key ? base.on : base.off,
-            color: value === g.key ? base.onText : base.offText,
-          }}
-        >
-          {g.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function Stat({ label, value }) {
-  return (
-    <div>
-      <div className="text-[11px]" style={{ color: "#8A9A8F" }}>
-        {label}
-      </div>
-      <div className="text-lg font-bold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
 function FieldGroup({ title, fields, entry, onChange, member }) {
-  const visibleFields = fields.filter((f) => fieldApplies(f, member));
-  if (!visibleFields.length) return null;
   return (
     <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-      <h3 className="text-sm font-bold mb-3 tracking-wide" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#0E4B43" }}>
-        {title}
-      </h3>
+      <h3 className="text-sm font-bold mb-3" style={{ color: "#0E4B43" }}>{title}</h3>
       <div className="space-y-3">
-        {visibleFields.map((f) => (
+        {fields.filter(f => fieldApplies(f, member)).map((f) => (
           <div key={f.key} className="flex items-center justify-between gap-3">
-            <span className="text-sm" style={{ color: "#33443A" }}>
-              {f.label}
-            </span>
-            {f.type === "bool" && (
-              <BoolToggle value={!!entry[f.key]} onChange={(v) => onChange(f.key, v)} />
-            )}
-            {f.type === "count" && (
-              <CountStepper value={entry[f.key]} max={f.max} onChange={(v) => onChange(f.key, v)} />
-            )}
-            {f.type === "number" && (
-              <NumberField value={entry[f.key]} target={f.target} onChange={(v) => onChange(f.key, v)} />
-            )}
-            {f.type === "time" && (
-              <TimeField value={entry[f.key]} onChange={(v) => onChange(f.key, v)} />
-            )}
+            <span className="text-sm" style={{ color: "#33443A" }}>{f.label}</span>
+            {f.type === "bool" && <BoolToggle value={!!entry[f.key]} onChange={(v) => onChange(f.key, v)} />}
+            {f.type === "count" && <CountStepper value={entry[f.key]} max={f.max} onChange={(v) => onChange(f.key, v)} />}
           </div>
         ))}
       </div>
