@@ -22,7 +22,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
 <style>
-  html, body { background: #F4F7F1; margin: 0; }
+  html, body { background: #F4F7F1; margin: 0; padding: 0; }
 </style>
 </head>
 <body>
@@ -84,7 +84,7 @@
       const snap = await q.get();
       const keys = snap.docs.map((d) => d.id);
       return { keys, prefix, shared };
-    ,
+    }
   };
 
   if ("serviceWorker" in navigator) {
@@ -94,7 +94,7 @@
   }
 </script>
 
-<script type="text/babel" data-presets="react,env">
+<script type="text/babel">
 const { useState, useEffect, useCallback, useMemo } = React;
 
 function Icon({ children, size = 18, color = "currentColor", className, style }) {
@@ -1060,7 +1060,6 @@ function FieldGroup({ title, fields, entry, onChange, member }) {
   );
 }
 
-// React 18 Root Render Initialization
 const container = document.getElementById("root");
 const root = ReactDOM.createRoot(container);
 root.render(<App />);
