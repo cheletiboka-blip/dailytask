@@ -15,206 +15,298 @@
     @media print {
       .no-print { display: none !important; }
       .pdf-page { page-break-after: always; }
+      /* বাইন্ডিং ও পাঞ্চ করার জন্য বাম পাশে ২০ মিমি ফাকা জায়গা */
       .punch-margin { padding-left: 20mm !important; }
     }
   </style>
 </head>
 <body class="bg-gray-100 text-gray-800 p-4 min-h-screen">
 
+  <!-- কন্ট্রোল প্যানেল (ইনপুট ও ডাউনলোড অপশন) -->
   <div class="max-w-4xl mx-auto bg-white p-6 rounded-xl shadow-md no-print mb-6">
-    <h1 class="text-2xl font-bold mb-4 text-center text-blue-700">মাসিক আমল ও পারিবারিক ট্র্যাকার সেটআপ</h1>
+    <h1 class="text-2xl font-bold mb-4 text-center text-blue-700">মাসিক আমল ও পারিবারিক ট্র্যাকার</h1>
     
+    <!-- ১) কাস্টম ফ্যামিলি কোড তৈরির অপশন -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
       <div>
-        <label class="block font-semibold mb-1">কাস্টম ফ্যামিলি কোড:</label>
+        <label class="block font-semibold mb-1">কাস্টম ফ্যামিলি কোড লিখুন:</label>
         <div class="flex gap-2">
-          <input type="text" id="familyCodeInput" placeholder="যেমন: FAM-2026-XYZ" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <button onclick="saveFamilyCode()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">সেভ</button>
+          <input type="text" id="familyCodeInput" placeholder="যেমন: FAM-2026-01" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <button onclick="saveFamilyCode()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">সেভ করুন</button>
         </div>
       </div>
       <div>
-        <label class="block font-semibold mb-1">বর্তমান ফ্যামিলি কোড:</label>
-        <div id="currentFamilyCode" class="p-2 bg-gray-100 border border-gray-300 rounded font-bold text-gray-700">সেট করা হয়নি</div>
+        <label class="block font-semibold mb-1">বর্তমান ব্যবহৃত ফ্যামিলি কোড:</label>
+        <div id="currentFamilyCode" class="p-2 bg-gray-100 border border-gray-300 rounded font-bold text-gray-700">FAM-2026-DEFAULT</div>
       </div>
     </div>
 
-    <div class="flex justify-end gap-3 mt-4">
-      <button onclick="generatePDF()" class="bg-green-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2">
+    <!-- ইন্টারেক্টিভ ইনপুট ফর্ম -->
+    <div class="border-t pt-4 mt-4">
+      <h2 class="text-lg font-bold mb-3">আমল ও সভার তথ্য ইনপুট দিন</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <div>
+          <label class="block text-sm font-semibold mb-1">সপ্তাহ নির্বাচন:</label>
+          <select id="weekSelect" class="w-full p-2 border rounded">
+            <option value="0">সপ্তাহ ১</option>
+            <option value="1">সপ্তাহ ২</option>
+            <option value="2">সপ্তাহ ৩</option>
+            <option value="3">সপ্তাহ ৪</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">সালাত:</label>
+          <input type="text" id="salatInput" placeholder="যেমন: নিয়মিত" class="w-full p-2 border rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">কুরআন তিলাওয়াত:</label>
+          <input type="text" id="quranInput" placeholder="যেমন: ১ পারা" class="w-full p-2 border rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">দাওয়াহ:</label>
+          <input type="text" id="dawahInput" placeholder="যেমন: সম্পন্ন" class="w-full p-2 border rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">জিকির ও দো’আ:</label>
+          <input type="text" id="zikrInput" placeholder="যেমন: নিয়মিত" class="w-full p-2 border rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">পড়াশোনা/দক্ষতা:</label>
+          <input type="text" id="studyInput" placeholder="যেমন: উত্তম" class="w-full p-2 border rounded">
+        </div>
+      </div>
+      <button onclick="updateAmalTable()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm font-semibold mb-4">টেবিল আপডেট করুন</button>
+
+      <!-- পারিবারিক সভা ইনপুট -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 border-t pt-3">
+        <div>
+          <label class="block text-sm font-semibold mb-1">পারিবারিক সভার সিদ্ধান্ত (১টি):</label>
+          <input type="text" id="meetingDecisionInput" placeholder="সিদ্ধান্ত লিখুন" class="w-full p-2 border rounded">
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">বাস্তবায়নকারী:</label>
+          <input type="text" id="meetingAssigneeInput" placeholder="যেমন: সকল সদস্য" class="w-full p-2 border rounded">
+        </div>
+      </div>
+      <button onclick="updateMeetingTable()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 text-sm font-semibold mt-3">সভা আপডেট করুন</button>
+    </div>
+
+    <!-- পিডিএফ ডাউনলোড বোতাম -->
+    <div class="flex justify-end gap-3 mt-6 border-t pt-4">
+      <button onclick="generatePDF()" class="bg-green-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2">
         পিডিএফ ডাউনলোড করুন
       </button>
     </div>
   </div>
 
-  <div id="pdf-content" class="max-w-4xl mx-auto bg-white p-4">
+  <!-- ২) পিডিএফ লেআউট (দুই পেজে বিভক্ত) -->
+  <div id="pdf-content" class="max-w-4xl mx-auto bg-white p-2">
     
-    <!-- পেজ ১: মাসিক রিপোর্ট -->
-    <div class="pdf-page punch-margin p-4 min-h-[1050px] flex flex-col justify-between border border-gray-200">
+    <!-- পেজ ১: মাসিক রিপোর্ট (শুধু ১ পেজে সীমাবদ্ধ) -->
+    <div class="pdf-page punch-margin p-6 min-h-[1050px] flex flex-col justify-between border border-gray-200 bg-white">
       <div>
-        <div class="flex justify-between items-center border-b-2 border-gray-800 pb-2 mb-4">
+        <!-- হেডিং অংশ (দ্বীন/দুনিয়া হেডিং বাদ দেওয়া হয়েছে) -->
+        <div class="flex justify-between items-center border-b-2 border-gray-800 pb-3 mb-6">
           <div>
             <h2 class="text-2xl font-bold text-gray-900">মাসিক আমল ও পারফরম্যান্স রিপোর্ট</h2>
-            <p class="text-sm text-gray-600">ফ্যামিলি কোড: <span id="pdfFamilyCode" class="font-semibold">N/A</span></p>
+            <p class="text-sm text-gray-600 mt-1">ফ্যামিলি কোড: <span id="pdfFamilyCode" class="font-bold text-blue-700">FAM-2026-DEFAULT</span></p>
           </div>
           <div class="text-right text-sm">
-            <p>মাস: <span id="pdfMonth" class="font-semibold">জুলাই, ২০২৬</span></p>
+            <p class="font-semibold text-gray-700">মাস: জুলাই, ২০২৬</p>
           </div>
         </div>
 
-        <div class="mb-6">
-          <h3 class="text-lg font-bold mb-2 border-b pb-1">আমল ও দৈনন্দিন ট্র্যাকিং</h3>
+        <!-- মূল ট্র্যাকিং টেবিল (দাওয়াহ অপশন সহ আপডেট করা হয়েছে) -->
+        <div class="mb-8">
+          <h3 class="text-base font-bold mb-3 border-b pb-1 text-gray-800">দৈনন্দিন ও সাপ্তাহিক আমল ট্র্যাকিং</h3>
           <table class="w-full text-left border-collapse border border-gray-300 text-sm">
             <thead>
-              <tr class="bg-gray-100">
-                <th class="border border-gray-300 p-2">তারিখ/বিষয়</th>
-                <th class="border border-gray-300 p-2 text-center">সালাত</th>
-                <th class="border border-gray-300 p-2 text-center">কুরআন তিলাওয়াত</th>
-                <th class="border border-gray-300 p-2 text-center">দাওয়াহ</th>
-                <th class="border border-gray-300 p-2 text-center">জিকির ও দো’আ</th>
-                <th class="border border-gray-300 p-2 text-center">পড়াশোনা/দক্ষতা</th>
+              <tr class="bg-gray-100 text-gray-700">
+                <th class="border border-gray-300 p-2.5">তারিখ/সপ্তাহ</th>
+                <th class="border border-gray-300 p-2.5 text-center">সালাত</th>
+                <th class="border border-gray-300 p-2.5 text-center">কুরআন তিলাওয়াত</th>
+                <th class="border border-gray-300 p-2.5 text-center">দাওয়াহ</th>
+                <th class="border border-gray-300 p-2.5 text-center">জিকির ও দো’আ</th>
+                <th class="border border-gray-300 p-2.5 text-center">পড়াশোনা/দক্ষতা</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="amalTableBody">
               <tr>
-                <td class="border border-gray-300 p-2">সপ্তাহ ১</td>
-                <td class="border border-gray-300 p-2 text-center">নিয়মিত</td>
-                <td class="border border-gray-300 p-2 text-center">সম্পন্ন</td>
-                <td class="border border-gray-300 p-2 text-center">সম্পন্ন</td>
-                <td class="border border-gray-300 p-2 text-center">নিয়মিত</td>
-                <td class="border border-gray-300 p-2 text-center">উত্তম</td>
+                <td class="border border-gray-300 p-2.5 font-medium">সপ্তাহ ১</td>
+                <td id="salat-0" class="border border-gray-300 p-2.5 text-center">নিয়মিত</td>
+                <td id="quran-0" class="border border-gray-300 p-2.5 text-center">সম্পন্ন</td>
+                <td id="dawah-0" class="border border-gray-300 p-2.5 text-center">সম্পন্ন</td>
+                <td id="zikr-0" class="border border-gray-300 p-2.5 text-center">নিয়মিত</td>
+                <td id="study-0" class="border border-gray-300 p-2.5 text-center">উত্তম</td>
               </tr>
               <tr>
-                <td class="border border-gray-300 p-2">সপ্তাহ ২</td>
-                <td class="border border-gray-300 p-2 text-center">নিয়মিত</td>
-                <td class="border border-gray-300 p-2 text-center">সম্পন্ন</td>
-                <td class="border border-gray-300 p-2 text-center">আংশিক</td>
-                <td class="border border-gray-300 p-2 text-center">নিয়মিত</td>
-                <td class="border border-gray-300 p-2 text-center">মধ্যম</td>
+                <td class="border border-gray-300 p-2.5 font-medium">সপ্তাহ ২</td>
+                <td id="salat-1" class="border border-gray-300 p-2.5 text-center">নিয়মিত</td>
+                <td id="quran-1" class="border border-gray-300 p-2.5 text-center">সম্পন্ন</td>
+                <td id="dawah-1" class="border border-gray-300 p-2.5 text-center">আংশিক</td>
+                <td id="zikr-1" class="border border-gray-300 p-2.5 text-center">নিয়মিত</td>
+                <td id="study-1" class="border border-gray-300 p-2.5 text-center">মধ্যম</td>
               </tr>
               <tr>
-                <td class="border border-gray-300 p-2">সপ্তাহ ৩</td>
-                <td class="border border-gray-300 p-2 text-center">নিয়মিত</td>
-                <td class="border border-gray-300 p-2 text-center">সম্পন্ন</td>
-                <td class="border border-gray-300 p-2 text-center">সম্পন্ন</td>
-                <td class="border border-gray-300 p-2 text-center">নিয়মিত</td>
-                <td class="border border-gray-300 p-2 text-center">উত্তম</td>
+                <td class="border border-gray-300 p-2.5 font-medium">সপ্তাহ ৩</td>
+                <td id="salat-2" class="border border-gray-300 p-2.5 text-center">নিয়মিত</td>
+                <td id="quran-2" class="border border-gray-300 p-2.5 text-center">সম্পন্ন</td>
+                <td id="dawah-2" class="border border-gray-300 p-2.5 text-center">সম্পন্ন</td>
+                <td id="zikr-2" class="border border-gray-300 p-2.5 text-center">নিয়মিত</td>
+                <td id="study-2" class="border border-gray-300 p-2.5 text-center">উত্তম</td>
               </tr>
               <tr>
-                <td class="border border-gray-300 p-2">সপ্তাহ ৪</td>
-                <td class="border border-gray-300 p-2 text-center">নিয়মিত</td>
-                <td class="border border-gray-300 p-2 text-center">সম্পন্ন</td>
-                <td class="border border-gray-300 p-2 text-center">সম্পন্ন</td>
-                <td class="border border-gray-300 p-2 text-center">নিয়মিত</td>
-                <td class="border border-gray-300 p-2 text-center">উত্তম</td>
+                <td class="border border-gray-300 p-2.5 font-medium">সপ্তাহ ৪</td>
+                <td id="salat-3" class="border border-gray-300 p-2.5 text-center">নিয়মিত</td>
+                <td id="quran-3" class="border border-gray-300 p-2.5 text-center">সম্পন্ন</td>
+                <td id="dawah-3" class="border border-gray-300 p-2.5 text-center">সম্পন্ন</td>
+                <td id="zikr-3" class="border border-gray-300 p-2.5 text-center">নিয়মিত</td>
+                <td id="study-3" class="border border-gray-300 p-2.5 text-center">উত্তম</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <div class="mb-4">
-          <h3 class="text-lg font-bold mb-2 border-b pb-1">মাসিক পারিবারিক সভা ও সিদ্ধান্ত</h3>
+        <!-- ৬) পারিবারিক সভা ও সিদ্ধান্ত অংশ (শুধু ১ নম্বর ক্রম রাখা হয়েছে) -->
+        <div class="mb-6">
+          <h3 class="text-base font-bold mb-3 border-b pb-1 text-gray-800">মাসিক পারিবারিক সভা ও সিদ্ধান্ত</h3>
           <table class="w-full text-left border-collapse border border-gray-300 text-sm">
             <thead>
-              <tr class="bg-gray-100">
-                <th class="border border-gray-300 p-2 w-12 text-center">ক্র.</th>
-                <th class="border border-gray-300 p-2">আলোচনার বিষয় ও সিদ্ধান্ত</th>
-                <th class="border border-gray-300 p-2 w-32 text-center">বাস্তবায়নকারী</th>
+              <tr class="bg-gray-100 text-gray-700">
+                <th class="border border-gray-300 p-2.5 w-12 text-center">ক্র.</th>
+                <th class="border border-gray-300 p-2.5">আলোচনার বিষয় ও সিদ্ধান্ত</th>
+                <th class="border border-gray-300 p-2.5 w-36 text-center">বাস্তবায়নকারী</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td class="border border-gray-300 p-2 text-center">১</td>
-                <td class="border border-gray-300 p-2">পারিবারিক তালিম ও সাপ্তাহিক আমল পর্যালোচনা নিয়মিত করা।</td>
-                <td class="border border-gray-300 p-2 text-center">সকল সদস্য</td>
+                <td class="border border-gray-300 p-2.5 text-center font-bold">১</td>
+                <td id="meetingDecisionText" class="border border-gray-300 p-2.5">পারিবারিক তালিম ও সাপ্তাহিক আমল পর্যালোচনা নিয়মিত করা।</td>
+                <td id="meetingAssigneeText" class="border border-gray-300 p-2.5 text-center">সকল সদস্য</td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      <div class="text-xs text-gray-500 text-center border-t pt-2">
+      <div class="text-xs text-gray-400 text-center border-t pt-2">
         পৃষ্ঠা ১ (মাসিক রিপোর্ট)
       </div>
     </div>
 
     <!-- পেজ ২: ওভারভিউ, গ্রাফ ও ক্যালেন্ডার -->
-    <div class="pdf-page punch-margin p-4 min-h-[1050px] flex flex-col justify-between border border-gray-200 mt-6">
+    <div class="pdf-page punch-margin p-6 min-h-[1050px] flex flex-col justify-between border border-gray-200 bg-white mt-6">
       <div>
-        <h3 class="text-lg font-bold mb-3 border-b pb-1">মাসিক ওভারভিউ ও অগ্রগতি</h3>
-        
-        <div class="mb-6 flex justify-center">
-          <div style="width: 320px; height: 180px;">
-            <canvas id="overviewChart"></canvas>
+        <!-- ৪) গ্রাফ (ইংরেজি সংখ্যায়) & ৫) ছোট সাইজের গ্রাফ -->
+        <div class="mb-8">
+          <h3 class="text-base font-bold mb-4 border-b pb-1 text-gray-800">মাসিক ওভারভিউ ও অগ্রগতি</h3>
+          <div class="flex justify-center items-center">
+            <div style="width: 380px; height: 210px;">
+              <canvas id="overviewChart"></canvas>
+            </div>
           </div>
         </div>
 
+        <!-- ৫) ছোট সাইজের ক্যালেন্ডার -->
         <div class="mb-6">
-          <h3 class="text-lg font-bold mb-3 border-b pb-1">মাসিক ক্যালেন্ডার ভিউ</h3>
-          <div class="max-w-md mx-auto grid grid-cols-7 gap-1 text-center text-xs">
-            <div class="font-bold p-1 bg-gray-200">Sun</div>
-            <div class="font-bold p-1 bg-gray-200">Mon</div>
-            <div class="font-bold p-1 bg-gray-200">Tue</div>
-            <div class="font-bold p-1 bg-gray-200">Wed</div>
-            <div class="font-bold p-1 bg-gray-200">Thu</div>
-            <div class="font-bold p-1 bg-gray-200">Fri</div>
-            <div class="font-bold p-1 bg-gray-200">Sat</div>
+          <h3 class="text-base font-bold mb-4 border-b pb-1 text-gray-800">মাসিক ক্যালেন্ডার ভিউ</h3>
+          <div class="max-w-sm mx-auto border border-gray-300 rounded p-2">
+            <div class="grid grid-cols-7 gap-1 text-center text-xs font-bold mb-1">
+              <div class="p-1 bg-gray-100 text-red-600">Sun</div>
+              <div class="p-1 bg-gray-100">Mon</div>
+              <div class="p-1 bg-gray-100">Tue</div>
+              <div class="p-1 bg-gray-100">Wed</div>
+              <div class="p-1 bg-gray-100">Thu</div>
+              <div class="p-1 bg-gray-100">Fri</div>
+              <div class="p-1 bg-gray-100">Sat</div>
+            </div>
             
-            <!-- ক্যালেন্ডারের দিনগুলো (ছোট সাইজ) -->
-            <div class="p-1 border bg-gray-50">1</div>
-            <div class="p-1 border bg-gray-50">2</div>
-            <div class="p-1 border bg-gray-50">3</div>
-            <div class="p-1 border bg-gray-50">4</div>
-            <div class="p-1 border bg-gray-50">5</div>
-            <div class="p-1 border bg-gray-50">6</div>
-            <div class="p-1 border bg-gray-50">7</div>
-            <div class="p-1 border bg-gray-50">8</div>
-            <div class="p-1 border bg-gray-50">9</div>
-            <div class="p-1 border bg-gray-50">10</div>
-            <div class="p-1 border bg-gray-50">11</div>
-            <div class="p-1 border bg-gray-50">12</div>
-            <div class="p-1 border bg-gray-50">13</div>
-            <div class="p-1 border bg-gray-50">14</div>
-            <div class="p-1 border bg-gray-50">15</div>
-            <div class="p-1 border bg-gray-50">16</div>
-            <div class="p-1 border bg-gray-50">17</div>
-            <div class="p-1 border bg-gray-50">18</div>
-            <div class="p-1 border bg-gray-50">19</div>
-            <div class="p-1 border bg-gray-50">20</div>
-            <div class="p-1 border bg-gray-50">21</div>
-            <div class="p-1 border bg-gray-50">22</div>
-            <div class="p-1 border bg-gray-50">23</div>
-            <div class="p-1 border bg-gray-50">24</div>
-            <div class="p-1 border bg-gray-50">25</div>
-            <div class="p-1 border bg-gray-50">26</div>
-            <div class="p-1 border bg-gray-50">27</div>
-            <div class="p-1 border bg-gray-50">28</div>
-            <div class="p-1 border bg-gray-50">29</div>
-            <div class="p-1 border bg-gray-50">30</div>
-            <div class="p-1 border bg-gray-50">31</div>
+            <div class="grid grid-cols-7 gap-1 text-center text-xs">
+              <div class="p-1.5 border bg-gray-50">1</div>
+              <div class="p-1.5 border bg-gray-50">2</div>
+              <div class="p-1.5 border bg-gray-50">3</div>
+              <div class="p-1.5 border bg-gray-50">4</div>
+              <div class="p-1.5 border bg-gray-50">5</div>
+              <div class="p-1.5 border bg-gray-50">6</div>
+              <div class="p-1.5 border bg-gray-50">7</div>
+              <div class="p-1.5 border bg-gray-50">8</div>
+              <div class="p-1.5 border bg-gray-50">9</div>
+              <div class="p-1.5 border bg-gray-50">10</div>
+              <div class="p-1.5 border bg-gray-50">11</div>
+              <div class="p-1.5 border bg-gray-50">12</div>
+              <div class="p-1.5 border bg-gray-50">13</div>
+              <div class="p-1.5 border bg-gray-50">14</div>
+              <div class="p-1.5 border bg-gray-50">15</div>
+              <div class="p-1.5 border bg-gray-50">16</div>
+              <div class="p-1.5 border bg-gray-50">17</div>
+              <div class="p-1.5 border bg-gray-50">18</div>
+              <div class="p-1.5 border bg-gray-50">19</div>
+              <div class="p-1.5 border bg-gray-50">20</div>
+              <div class="p-1.5 border bg-gray-50">21</div>
+              <div class="p-1.5 border bg-gray-50">22</div>
+              <div class="p-1.5 border bg-gray-50">23</div>
+              <div class="p-1.5 border bg-gray-50">24</div>
+              <div class="p-1.5 border bg-gray-50">25</div>
+              <div class="p-1.5 border bg-gray-50">26</div>
+              <div class="p-1.5 border bg-gray-50">27</div>
+              <div class="p-1.5 border bg-gray-50">28</div>
+              <div class="p-1.5 border bg-gray-50">29</div>
+              <div class="p-1.5 border bg-gray-50">30</div>
+              <div class="p-1.5 border bg-gray-50">31</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="text-xs text-gray-500 text-center border-t pt-2">
+      <div class="text-xs text-gray-400 text-center border-t pt-2">
         পৃষ্ঠা ২ (গ্রাফ ও ওভারভিউ)
       </div>
     </div>
 
   </div>
 
+  <!-- সকল স্ক্রিপ্ট ও লজিক -->
   <script>
-    let currentCode = "FAM-DEFAULT";
-
+    // ফ্যামিলি কোড সেভ করার ফাংশন
     function saveFamilyCode() {
       const input = document.getElementById('familyCodeInput').value.trim();
       if (input !== "") {
-        currentCode = input;
-        document.getElementById('currentFamilyCode').innerText = currentCode;
-        document.getElementById('pdfFamilyCode').innerText = currentCode;
-        alert("কাস্টম ফ্যামিলি কোড সফলভাবে পরিবর্তন করা হয়েছে!");
+        document.getElementById('currentFamilyCode').innerText = input;
+        document.getElementById('pdfFamilyCode').innerText = input;
+        alert("কাস্টম ফ্যামিলি কোড পরিবর্তন করা হয়েছে!");
       }
     }
 
-    // Chart.js Setup (শুধুমাত্র ইংরেজি সংখ্যা ব্যবহার করা হয়েছে)
+    // টেবিল ইনপুট আপডেট করার ফাংশন
+    function updateAmalTable() {
+      const weekIndex = document.getElementById('weekSelect').value;
+      const salat = document.getElementById('salatInput').value;
+      const quran = document.getElementById('quranInput').value;
+      const dawah = document.getElementById('dawahInput').value;
+      const zikr = document.getElementById('zikrInput').value;
+      const study = document.getElementById('studyInput').value;
+
+      if(salat) document.getElementById(`salat-${weekIndex}`).innerText = salat;
+      if(quran) document.getElementById(`quran-${weekIndex}`).innerText = quran;
+      if(dawah) document.getElementById(`dawah-${weekIndex}`).innerText = dawah;
+      if(zikr) document.getElementById(`zikr-${weekIndex}`).innerText = zikr;
+      if(study) document.getElementById(`study-${weekIndex}`).innerText = study;
+
+      alert("সপ্তাহের তথ্য আপডেট করা হয়েছে!");
+    }
+
+    // সভার সিদ্ধান্ত আপডেট করার ফাংশন
+    function updateMeetingTable() {
+      const decision = document.getElementById('meetingDecisionInput').value;
+      const assignee = document.getElementById('meetingAssigneeInput').value;
+
+      if(decision) document.getElementById('meetingDecisionText').innerText = decision;
+      if(assignee) document.getElementById('meetingAssigneeText').innerText = assignee;
+
+      alert("পারিবারিক সভার তথ্য আপডেট করা হয়েছে!");
+    }
+
+    // Chart.js Setup (শুধুমাত্র ইংরেজি সংখ্যা)
     window.onload = function() {
       const ctx = document.getElementById('overviewChart').getContext('2d');
       new Chart(ctx, {
@@ -224,18 +316,38 @@
           datasets: [{
             label: 'Performance Score (%)',
             data: [85, 75, 90, 88],
-            backgroundColor: '#2563eb'
+            backgroundColor: '#2563eb',
+            borderRadius: 4
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: {
+                font: {
+                  size: 11
+                }
+              }
+            }
+          },
           scales: {
             y: {
               beginAtZero: true,
               max: 100,
               ticks: {
-                stepSize: 20
+                stepSize: 20,
+                font: {
+                  size: 10
+                }
+              }
+            },
+            x: {
+              ticks: {
+                font: {
+                  size: 10
+                }
               }
             }
           }
@@ -243,11 +355,12 @@
       });
     };
 
+    // পিডিএফ জেনারেটর (মার্জিন ও পেজ ব্রেক সহ)
     function generatePDF() {
       const element = document.getElementById('pdf-content');
       const opt = {
         margin:       [0, 0, 0, 0],
-        filename:     'Monthly_Report.pdf',
+        filename:     'Monthly_Amal_Report.pdf',
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2 },
         jsPDF:        { unit: 'pt', format: 'a4', orientation: 'portrait' }
