@@ -41,16 +41,32 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
   db.enablePersistence().catch(() => {});
-  const FAMILY_COLLECTION = "daily_task_data";
 
-  // appStorage Shim
+  // Get or Set Family Code for Privacy
+  function getFamilyCode() {
+    let code = localStorage.getItem("family_code");
+    if (!code) {
+      code = "fam_" + Math.random().toString(36).substring(2, 8);
+      localStorage.setItem("family_code", code);
+    }
+    return code;
+  }
+
+  function setFamilyCode(code) {
+    localStorage.setItem("family_code", code.trim());
+    window.location.reload();
+  }
+
+  const getCollectionName = () => `data_${getFamilyCode()}`;
+
+  // Dynamic appStorage Shim
   const appStorage = {
     async get(key, shared) {
       if (!shared) {
         const v = localStorage.getItem(key);
         return v !== null ? { key, value: v, shared } : null;
       }
-      const doc = await db.collection(FAMILY_COLLECTION).doc(key).get();
+      const doc = await db.collection(getCollectionName()).doc(key).get();
       if (!doc.exists) return null;
       return { key, value: doc.data().value, shared };
     },
@@ -59,7 +75,7 @@
         localStorage.setItem(key, value);
         return { key, value, shared };
       }
-      await db.collection(FAMILY_COLLECTION).doc(key).set({ value, updatedAt: Date.now() });
+      await db.collection(getCollectionName()).doc(key).set({ value, updatedAt: Date.now() });
       return { key, value, shared };
     },
     async delete(key, shared) {
@@ -67,7 +83,7 @@
         localStorage.removeItem(key);
         return { key, deleted: true, shared };
       }
-      await db.collection(FAMILY_COLLECTION).doc(key).delete();
+      await db.collection(getCollectionName()).doc(key).delete();
       return { key, deleted: true, shared };
     },
     async list(prefix, shared) {
@@ -75,7 +91,7 @@
         const keys = Object.keys(localStorage).filter((k) => !prefix || k.startsWith(prefix));
         return { keys, prefix, shared };
       }
-      let q = db.collection(FAMILY_COLLECTION);
+      let q = db.collection(getCollectionName());
       if (prefix) {
         q = q
           .where(firebase.firestore.FieldPath.documentId(), ">=", prefix)
@@ -130,6 +146,9 @@ function User({ size, color, className }) {
 function CalIcon({ size, color, className }) {
   return <Icon size={size} color={color} className={className}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Icon>;
 }
+function KeyIcon({ size, color, className }) {
+  return <Icon size={size} color={color} className={className}><path d="M21 2l-2 2m-1.5 1.5l-3 3m-2 2l-3 3m-2 2l-3 3M3 21l3-3m0 0l2 2m-2-2l-2-2"/></Icon>;
+}
 function Loader2({ size, color, className }) {
   return (
     <Icon size={size} color={color} className={className}>
@@ -168,12 +187,11 @@ const DEEN_FIELDS = [
 ];
 
 const DUNIYA_FIELDS = [
-  { key: "wokeOnTime", label: "সময়মতো ঘুম থেকে ওঠা", type: "bool" },
-  { key: "wakeTime", label: "ঘুম থেকে ওঠার সময় (ঐচ্ছিক)", type: "time", info: true },
+  { key: "earlyMorning", label: "ভোরের বরকতময় সময়কে কাজে লাগানো", type: "bool" },
   { key: "exercise", label: "ব্যায়াম/শরীরচর্চা", type: "bool" },
   { key: "healthyFood", label: "স্বাস্থ্যকর খাবার", type: "bool" },
   { key: "familyTime", label: "পরিবারকে সময় দেওয়া", type: "bool" },
-  { key: "screenLimit", label: "মোবাইল/সোশ্যাল মিডিয়া সীমিত", type: "bool" },
+  { key: "screenLimit", label: "সোশ্যাল মিডিয়া/মোবাইল সীমিত (সর্বোচ্চ ১ ঘণ্টা)", type: "bool" },
   { key: "noHurtingOthers", label: "অন্যের হক নষ্ট/মনে কষ্ট না দেয়া", type: "bool" },
   { key: "noProcrastination", label: "অলসতা/কাজ ফেলে না রাখা", type: "bool" },
   { key: "phoneOffBy11", label: "রাত ১১টার মধ্যে ফোন/ইন্টারনেট বন্ধ", type: "bool" },
@@ -433,6 +451,9 @@ function App() {
   const [savingWeekly, setSavingWeekly] = useState(false);
   const [weeklySavedTick, setWeeklySavedTick] = useState(false);
 
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [inputCode, setInputCode] = useState("");
+
   useEffect(() => {
     (async () => {
       const m = await loadMembers();
@@ -628,6 +649,7 @@ function App() {
     );
   }
 
+  // Optimized A4 Single-Page Print View
   if (printMode) {
     const total = monthStats.total;
     const rows = Array.from({ length: total }, (_, i) => i + 1);
@@ -635,37 +657,41 @@ function App() {
       <div style={{ fontFamily: "'Noto Sans Bengali', sans-serif", color: "#111" }}>
         <style>{`
           @media print {
-            @page { size: A4 portrait; margin: 10mm; }
+            @page { size: A4 portrait; margin: 6mm; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .no-print { display: none !important; }
           }
-          table { border-collapse: collapse; width: 100%; }
-          th, td { border: 1px solid #999; padding: 3px 4px; font-size: 9px; text-align: center; }
-          th { background: #0E4B43; color: #fff; font-weight: 600; }
+          table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+          th, td { border: 1px solid #777; padding: 2px 1px; font-size: 7.5px; text-align: center; overflow: hidden; white-space: nowrap; }
+          th { background: #0E4B43 !important; color: #fff !important; font-weight: 600; font-size: 7px; }
+          tr { height: 18px; }
         `}</style>
-        <div className="p-4 max-w-4xl mx-auto">
+        <div className="p-2 max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-2 no-print">
-            <button onClick={() => setPrintMode(false)} className="px-4 py-2 rounded-lg border font-semibold" style={{ borderColor: "#D8DED3" }}>
+            <button onClick={() => setPrintMode(false)} className="px-3 py-1.5 rounded-lg border text-sm font-semibold" style={{ borderColor: "#D8DED3" }}>
               ← ফিরে যান
             </button>
-            <button onClick={() => window.print()} className="px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}>
-              <Printer size={16} /> প্রিন্ট / PDF ডাউনলোড
+            <button onClick={() => window.print()} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}>
+              <Printer size={14} /> প্রিন্ট / PDF
             </button>
           </div>
-          <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 20, fontWeight: 700, textAlign: "center" }}>
-            Daily Task — {BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}
-          </h1>
-          <p style={{ textAlign: "center", marginBottom: 8 }}>
-            নাম: {selectedMember?.name} &nbsp;|&nbsp; পূরণ করা দিন: {toBn(monthStats.filled)}/{toBn(total)}
-            &nbsp;|&nbsp; গড় স্কোর: {toBn(monthStats.avgPct)}%
-          </p>
+          <div className="text-center mb-1">
+            <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 15, fontWeight: 700, margin: 0 }}>
+              Daily Task — {BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}
+            </h1>
+            <p style={{ fontSize: 10, margin: "2px 0 4px 0", color: "#333" }}>
+              নাম: <b>{selectedMember?.name}</b> &nbsp;|&nbsp; পূরণ করা দিন: <b>{toBn(monthStats.filled)}/{toBn(total)}</b>
+              &nbsp;|&nbsp; গড় স্কোর: <b>{toBn(monthStats.avgPct)}%</b>
+            </p>
+          </div>
           <table>
             <thead>
               <tr>
-                <th>তাং</th>
+                <th style={{ width: "24px" }}>তাং</th>
                 {ALL_FIELDS.map((f) => (
                   <th key={f.key}>{f.label.split("(")[0].trim()}</th>
                 ))}
-                <th>স্কোর</th>
+                <th style={{ width: "30px" }}>স্কোর</th>
               </tr>
             </thead>
             <tbody>
@@ -676,7 +702,7 @@ function App() {
                   <tr key={d}>
                     <td style={{ fontWeight: 700 }}>{toBn(d)}</td>
                     {ALL_FIELDS.map((f) => {
-                      if (!fieldApplies(f, selectedMember)) return <td key={f.key} style={{ color: "#bbb" }}>—</td>;
+                      if (!fieldApplies(f, selectedMember)) return <td key={f.key} style={{ color: "#ccc" }}>—</td>;
                       if (!e) return <td key={f.key}></td>;
                       const v = e[f.key];
                       let disp = "";
@@ -691,7 +717,7 @@ function App() {
             </tbody>
             <tfoot>
               <tr style={{ background: "#EFE6CC", fontWeight: 700 }}>
-                <td>শতকরা</td>
+                <td>%</td>
                 {ALL_FIELDS.map((f) => {
                   const pct = fieldPercent(f, monthEntries, total, selectedMember);
                   return <td key={f.key}>{pct === null ? "—" : toBn(pct) + "%"}</td>;
@@ -716,11 +742,20 @@ function App() {
         <div className="absolute -right-6 -top-6 opacity-10">
           <StarMark size={140} color="#F4F7F1" />
         </div>
-        <div className="relative flex items-center gap-2 mb-1">
-          <StarMark size={20} />
-          <h1 className="text-xl font-bold" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#F4F7F1" }}>
-            Daily Task
-          </h1>
+        <div className="relative flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <StarMark size={20} />
+            <h1 className="text-xl font-bold" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#F4F7F1" }}>
+              Daily Task
+            </h1>
+          </div>
+          {/* Privacy Code Settings */}
+          <button
+            onClick={() => setShowCodeModal(true)}
+            className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full text-white/80 border border-white/20 hover:bg-white/10"
+          >
+            <KeyIcon size={12} /> ফ্যামিলি কোড
+          </button>
         </div>
         <p className="relative text-sm" style={{ color: "#C7D6CD" }}>
           দ্বীন ও দুনিয়ার ব্যালেন্স ট্র্যাকার
@@ -983,6 +1018,40 @@ function App() {
           </button>
         </div>
       </div>
+
+      {/* Privacy Code Modal */}
+      {showCodeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-5 z-50">
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm">
+            <h3 className="font-bold text-lg mb-2" style={{ color: "#16302B" }}>ফ্যামিলি সিকিউরিটি কোড</h3>
+            <p className="text-xs text-gray-600 mb-4">
+              আপনার বর্তমান কোড: <b className="text-emerald-800">{getFamilyCode()}</b><br/>
+              অন্য যেকোনো ডিভাইসে এই কোড দিলে আপনার পরিবারের ডাটা দেখতে পারবেন।
+            </p>
+            <input
+              value={inputCode}
+              onChange={(e) => setInputCode(e.target.value)}
+              placeholder="অন্য ফ্যামিলি কোড লিখুন"
+              className="w-full h-10 border rounded-xl px-3 text-sm mb-3 outline-none"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setFamilyCode(inputCode)}
+                className="flex-1 h-10 rounded-xl text-white font-semibold text-sm"
+                style={{ background: "#0E4B43" }}
+              >
+                কোড সেট করুন
+              </button>
+              <button
+                onClick={() => setShowCodeModal(false)}
+                className="px-4 h-10 rounded-xl border text-sm font-semibold"
+              >
+                বন্ধ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
