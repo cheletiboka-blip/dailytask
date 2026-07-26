@@ -3,10 +3,9 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell 
 } from 'recharts';
 import { 
-  Calendar, CheckCircle, Flame, Trophy, User, ChevronLeft, ChevronRight, AlertCircle 
+  Calendar, CheckCircle, Flame, Trophy, User, ChevronLeft, ChevronRight 
 } from 'lucide-react';
 
-// --- Helper Functions & Constants ---
 const MEMBERS = [
   { id: 'tuhin', name: 'Tuhin' },
   { id: 'sumi', name: 'Sumi' },
@@ -35,7 +34,6 @@ export default function App() {
   const [selectedMember, setSelectedMember] = useState('tuhin');
   const [currentDate, setCurrentDate] = useState(() => new Date());
   
-  // Storage State: { [dateKey]: { [memberId]: { [taskId]: boolean } } }
   const [data, setData] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -60,7 +58,6 @@ export default function App() {
 
   const todayKey = formatDateKey(year, month0, day);
 
-  // Toggle Task
   const toggleTask = (memberId, taskId) => {
     setData((prev) => {
       const dayData = prev[todayKey] || {};
@@ -80,7 +77,6 @@ export default function App() {
     });
   };
 
-  // Monthly stats & calculations
   const monthStats = useMemo(() => {
     const days = getDaysInMonth(year, month0);
     let totalCompleted = 0;
@@ -112,9 +108,8 @@ export default function App() {
       totalCompleted,
       percentage,
     };
-  }, [data, year, month0, selectedMember]); // ✅ useMemo সঠিকভাবে বন্ধ করা হয়েছে
+  }, [data, year, month0, selectedMember]);
 
-  // Prev / Next Month
   const handlePrevMonth = () => {
     setCurrentDate(new Date(year, month0 - 1, 1));
   };
@@ -132,7 +127,6 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8 font-sans">
       <div className="max-w-3xl mx-auto space-y-6">
         
-        {/* Header */}
         <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <div>
             <h1 className="text-2xl font-bold text-emerald-600 flex items-center gap-2">
@@ -143,7 +137,6 @@ export default function App() {
             </p>
           </div>
 
-          {/* Member Switcher */}
           <div className="flex bg-slate-100 p-1 rounded-xl">
             {MEMBERS.map((m) => (
               <button
@@ -162,7 +155,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* Month Selector */}
         <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-100">
           <button
             onClick={handlePrevMonth}
@@ -182,7 +174,6 @@ export default function App() {
           </button>
         </div>
 
-        {/* Daily Tasks Card */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
             <Flame className="w-5 h-5 text-amber-500" /> আজকের আমল ({day} {monthNames[month0]})
@@ -217,7 +208,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Stats & Progress */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
@@ -228,7 +218,6 @@ export default function App() {
             </span>
           </div>
 
-          {/* Bar Chart */}
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthStats.chartData}>
