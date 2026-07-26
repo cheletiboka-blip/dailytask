@@ -9,27 +9,27 @@
 <link rel="icon" href="icon-192.png" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 
-<!-- Tailwind CSS -->
+<!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 
-<!-- React 18 + Babel -->
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-<!-- Firebase compat libraries -->
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
 <style>
-  html, body { background: #F4F7F1; margin: 0; padding: 0; }
+  html, body { background: #F4F7F1; margin: 0; }
 </style>
 </head>
 <body>
 <div id="root"></div>
 
 <script>
-  // Firebase Setup
+  // ---------- Firebase setup ----------
   const firebaseConfig = {
     apiKey: "AIzaSyCqvGSmjEY6PRnsdGh016Ta1m8PLjolqgA",
     authDomain: "daily-task-family.firebaseapp.com",
@@ -41,16 +41,21 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
   db.enablePersistence().catch(() => {});
-  const FAMILY_COLLECTION = "daily_task_data";
 
-  // appStorage Shim
+  // Dynamic Family Collection helper to keep family data private
+  function getCollectionName() {
+    const secret = localStorage.getItem("family_secret_key") || "default_family";
+    return `dt_family_${secret.trim().toLowerCase()}`;
+  }
+
+  // ---------- appStorage shim ----------
   const appStorage = {
     async get(key, shared) {
       if (!shared) {
         const v = localStorage.getItem(key);
         return v !== null ? { key, value: v, shared } : null;
       }
-      const doc = await db.collection(FAMILY_COLLECTION).doc(key).get();
+      const doc = await db.collection(getCollectionName()).doc(key).get();
       if (!doc.exists) return null;
       return { key, value: doc.data().value, shared };
     },
@@ -59,7 +64,7 @@
         localStorage.setItem(key, value);
         return { key, value, shared };
       }
-      await db.collection(FAMILY_COLLECTION).doc(key).set({ value, updatedAt: Date.now() });
+      await db.collection(getCollectionName()).doc(key).set({ value, updatedAt: Date.now() });
       return { key, value, shared };
     },
     async delete(key, shared) {
@@ -67,7 +72,7 @@
         localStorage.removeItem(key);
         return { key, deleted: true, shared };
       }
-      await db.collection(FAMILY_COLLECTION).doc(key).delete();
+      await db.collection(getCollectionName()).doc(key).delete();
       return { key, deleted: true, shared };
     },
     async list(prefix, shared) {
@@ -75,7 +80,7 @@
         const keys = Object.keys(localStorage).filter((k) => !prefix || k.startsWith(prefix));
         return { keys, prefix, shared };
       }
-      let q = db.collection(FAMILY_COLLECTION);
+      let q = db.collection(getCollectionName());
       if (prefix) {
         q = q
           .where(firebase.firestore.FieldPath.documentId(), ">=", prefix)
@@ -84,7 +89,7 @@
       const snap = await q.get();
       const keys = snap.docs.map((d) => d.id);
       return { keys, prefix, shared };
-    }
+    },
   };
 
   if ("serviceWorker" in navigator) {
@@ -94,7 +99,7 @@
   }
 </script>
 
-<script type="text/babel">
+<script type="text/babel" data-presets="react">
 const { useState, useEffect, useCallback, useMemo } = React;
 
 function Icon({ children, size = 18, color = "currentColor", className, style }) {
@@ -106,30 +111,14 @@ function Icon({ children, size = 18, color = "currentColor", className, style })
     </svg>
   );
 }
-function Plus({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Icon>;
-}
-function ChevronLeft({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><polyline points="15 18 9 12 15 6"/></Icon>;
-}
-function ChevronRight({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><polyline points="9 18 15 12 9 6"/></Icon>;
-}
-function Printer({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></Icon>;
-}
-function Check({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><polyline points="20 6 9 17 4 12"/></Icon>;
-}
-function X({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>;
-}
-function User({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></Icon>;
-}
-function CalIcon({ size, color, className }) {
-  return <Icon size={size} color={color} className={className}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Icon>;
-}
+function Plus({ size, color, className }) { return <Icon size={size} color={color} className={className}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Icon>; }
+function ChevronLeft({ size, color, className }) { return <Icon size={size} color={color} className={className}><polyline points="15 18 9 12 15 6"/></Icon>; }
+function ChevronRight({ size, color, className }) { return <Icon size={size} color={color} className={className}><polyline points="9 18 15 12 9 6"/></Icon>; }
+function Printer({ size, color, className }) { return <Icon size={size} color={color} className={className}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></Icon>; }
+function Check({ size, color, className }) { return <Icon size={size} color={color} className={className}><polyline points="20 6 9 17 4 12"/></Icon>; }
+function X({ size, color, className }) { return <Icon size={size} color={color} className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>; }
+function User({ size, color, className }) { return <Icon size={size} color={color} className={className}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></Icon>; }
+function CalIcon({ size, color, className }) { return <Icon size={size} color={color} className={className}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Icon>; }
 function Loader2({ size, color, className }) {
   return (
     <Icon size={size} color={color} className={className}>
@@ -140,6 +129,9 @@ function Loader2({ size, color, className }) {
     </Icon>
   );
 }
+function KeyIcon({ size, color, className }) {
+  return <Icon size={size} color={color} className={className}><path d="M21 2l-2 2m-1.5 1.5l-3 3m-2 2l-3 3m-2 2l-3.5 3.5a2.12 2.12 0 0 1-3-3L7 14m2-2l3-3m2-2l3-3"/><circle cx="16.5" cy="7.5" r="3.5"/></Icon>;
+}
 
 function useFonts() {
   useEffect(() => {
@@ -148,8 +140,7 @@ function useFonts() {
     const link = document.createElement("link");
     link.id = id;
     link.rel = "stylesheet";
-    link.href =
-      "https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@500;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap";
+    link.href = "https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@500;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap";
     document.head.appendChild(link);
   }, []);
 }
@@ -168,12 +159,11 @@ const DEEN_FIELDS = [
 ];
 
 const DUNIYA_FIELDS = [
-  { key: "wokeOnTime", label: "সময়মতো ঘুম থেকে ওঠা", type: "bool" },
-  { key: "wakeTime", label: "ঘুম থেকে ওঠার সময় (ঐচ্ছিক)", type: "time", info: true },
+  { key: "morningRoutine", label: "ভোরের বরকতময় সময়কে কাজে লাগানো", type: "bool" },
   { key: "exercise", label: "ব্যায়াম/শরীরচর্চা", type: "bool" },
   { key: "healthyFood", label: "স্বাস্থ্যকর খাবার", type: "bool" },
   { key: "familyTime", label: "পরিবারকে সময় দেওয়া", type: "bool" },
-  { key: "screenLimit", label: "মোবাইল/সোশ্যাল মিডিয়া সীমিত", type: "bool" },
+  { key: "screenLimit", label: "মোবাইল/সোশ্যাল মিডিয়া সীমিত (সর্বোচ্চ ১ ঘণ্টা)", type: "bool" },
   { key: "noHurtingOthers", label: "অন্যের হক নষ্ট/মনে কষ্ট না দেয়া", type: "bool" },
   { key: "noProcrastination", label: "অলসতা/কাজ ফেলে না রাখা", type: "bool" },
   { key: "phoneOffBy11", label: "রাত ১১টার মধ্যে ফোন/ইন্টারনেট বন্ধ", type: "bool" },
@@ -258,14 +248,11 @@ function fieldPercent(field, monthEntries, totalDays, member) {
     if (!e) continue;
     if (field.type === "bool" && e[field.key]) hit += 1;
     if (field.type === "number" && !field.target && Number(e[field.key]) > 0) hit += 1;
-    if (field.type === "time" && e[field.key]) hit += 1;
   }
   return Math.round((hit / daysCounted) * 100);
 }
 
-function weeklyKey(memberId, year, month0) {
-  return `weekly:${memberId}:${monthPrefix(year, month0)}`;
-}
+function weeklyKey(memberId, year, month0) { return `weekly:${memberId}:${monthPrefix(year, month0)}`; }
 async function loadWeekly(memberId, year, month0) {
   try {
     const res = await appStorage.get(weeklyKey(memberId, year, month0), true);
@@ -329,10 +316,8 @@ function BoolToggle({ value, onChange, disabled }) {
       disabled={disabled}
       onClick={() => onChange(!value)}
       className="flex items-center justify-center w-11 h-11 rounded-xl border-2 transition-all shrink-0"
-      style={{
-        borderColor: value ? "#0E4B43" : "#D8DED3",
-        background: value ? "#0E4B43" : "#FFFFFF",
-      }}
+      style={{ borderColor: value ? "#0E4B43" : "#D8DED3", background: value ? "#0E4B43" : "#FFFFFF" }}
+      aria-pressed={value}
     >
       {value ? <Check size={20} color="#F4F7F1" /> : <X size={16} color="#B9C2B2" />}
     </button>
@@ -343,27 +328,9 @@ function CountStepper({ value, onChange, max, disabled }) {
   const v = Number(value) || 0;
   return (
     <div className="flex items-center gap-2">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onChange(Math.max(0, v - 1))}
-        className="w-8 h-8 rounded-lg border flex items-center justify-center text-lg"
-        style={{ borderColor: "#D8DED3", color: "#16302B" }}
-      >
-        −
-      </button>
-      <span className="w-8 text-center font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}>
-        {toBn(v)}
-      </span>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onChange(Math.min(max, v + 1))}
-        className="w-8 h-8 rounded-lg border flex items-center justify-center text-lg"
-        style={{ borderColor: "#D8DED3", color: "#16302B" }}
-      >
-        +
-      </button>
+      <button type="button" disabled={disabled} onClick={() => onChange(Math.max(0, v - 1))} className="w-8 h-8 rounded-lg border flex items-center justify-center text-lg" style={{ borderColor: "#D8DED3", color: "#16302B" }}>−</button>
+      <span className="w-8 text-center font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}>{toBn(v)}</span>
+      <button type="button" disabled={disabled} onClick={() => onChange(Math.min(max, v + 1))} className="w-8 h-8 rounded-lg border flex items-center justify-center text-lg" style={{ borderColor: "#D8DED3", color: "#16302B" }}>+</button>
     </div>
   );
 }
@@ -382,30 +349,17 @@ function NumberField({ value, onChange, disabled, target }) {
         className="w-16 h-9 rounded-lg border px-2 text-right outline-none"
         style={{ borderColor: "#D8DED3", fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}
       />
-      {target ? (
-        <span className="text-xs" style={{ color: "#8A9A8F", fontFamily: "'IBM Plex Mono', monospace" }}>
-          /{toBn(target)}
-        </span>
-      ) : null}
+      {target ? <span className="text-xs" style={{ color: "#8A9A8F", fontFamily: "'IBM Plex Mono', monospace" }}>/{toBn(target)}</span> : null}
     </div>
-  );
-}
-
-function TimeField({ value, onChange, disabled }) {
-  return (
-    <input
-      type="time"
-      disabled={disabled}
-      value={value || ""}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-28 h-9 rounded-lg border px-2 text-right outline-none"
-      style={{ borderColor: "#D8DED3", fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}
-    />
   );
 }
 
 function App() {
   useFonts();
+
+  const [familySecret, setFamilySecret] = useState(() => localStorage.getItem("family_secret_key") || "");
+  const [inputSecret, setInputSecret] = useState(familySecret);
+  const [showSecretModal, setShowSecretModal] = useState(!familySecret);
 
   const [members, setMembers] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -433,22 +387,26 @@ function App() {
   const [savingWeekly, setSavingWeekly] = useState(false);
   const [weeklySavedTick, setWeeklySavedTick] = useState(false);
 
+  const initData = useCallback(async () => {
+    if (!familySecret) return;
+    setMembers(null);
+    const m = await loadMembers();
+    setMembers(m);
+    let last = null;
+    try {
+      const r = await appStorage.get("last-selected-member", false);
+      last = r ? JSON.parse(r.value) : null;
+    } catch {}
+    if (last && m.find((x) => x.id === last)) {
+      setSelectedId(last);
+    } else if (m.length) {
+      setSelectedId(m[0].id);
+    }
+  }, [familySecret]);
+
   useEffect(() => {
-    (async () => {
-      const m = await loadMembers();
-      setMembers(m);
-      let last = null;
-      try {
-        const r = await appStorage.get("last-selected-member", false);
-        last = r ? JSON.parse(r.value) : null;
-      } catch {}
-      if (last && m.find((x) => x.id === last)) {
-        setSelectedId(last);
-      } else if (m.length) {
-        setSelectedId(m[0].id);
-      }
-    })();
-  }, []);
+    initData();
+  }, [initData]);
 
   const selectedMember = useMemo(
     () => (members || []).find((m) => m.id === selectedId) || null,
@@ -473,9 +431,7 @@ function App() {
     });
   }, [selectedId, monthCursor]);
 
-  useEffect(() => {
-    refreshMonth();
-  }, [refreshMonth]);
+  useEffect(() => { refreshMonth(); }, [refreshMonth]);
 
   const refreshWeekly = useCallback(() => {
     if (!selectedId) return;
@@ -486,9 +442,15 @@ function App() {
     });
   }, [selectedId, monthCursor]);
 
-  useEffect(() => {
-    refreshWeekly();
-  }, [refreshWeekly]);
+  useEffect(() => { refreshWeekly(); }, [refreshWeekly]);
+
+  function handleSaveSecret() {
+    const s = inputSecret.trim();
+    if (!s) return;
+    localStorage.setItem("family_secret_key", s);
+    setFamilySecret(s);
+    setShowSecretModal(false);
+  }
 
   function updateWeekly(weekIdx, field, value) {
     setWeekly((prev) => ({
@@ -517,9 +479,7 @@ function App() {
     setNewGender("male");
     setAddingMember(false);
     await saveMembers(next);
-    try {
-      await appStorage.set("last-selected-member", JSON.stringify(id), false);
-    } catch {}
+    try { await appStorage.set("last-selected-member", JSON.stringify(id), false); } catch {}
   }
 
   async function handleDeleteMember(id) {
@@ -531,20 +491,15 @@ function App() {
       const fallback = next.length ? next[0].id : null;
       setSelectedId(fallback);
       try {
-        if (fallback) {
-          await appStorage.set("last-selected-member", JSON.stringify(fallback), false);
-        } else {
-          await appStorage.delete("last-selected-member", false);
-        }
+        if (fallback) await appStorage.set("last-selected-member", JSON.stringify(fallback), false);
+        else await appStorage.delete("last-selected-member", false);
       } catch {}
     }
   }
 
   async function handleSelectMember(id) {
     setSelectedId(id);
-    try {
-      await appStorage.set("last-selected-member", JSON.stringify(id), false);
-    } catch {}
+    try { await appStorage.set("last-selected-member", JSON.stringify(id), false); } catch {}
   }
 
   function updateField(key, value) {
@@ -585,6 +540,40 @@ function App() {
     return { total, filled, avgPct: Math.round(avg * 100) };
   }, [monthEntries, monthCursor, selectedMember]);
 
+  // Secret / Privacy Modal
+  if (showSecretModal) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-5" style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}>
+        <div className="bg-white rounded-3xl p-6 shadow-xl w-full max-w-sm border" style={{ borderColor: "#E7EEE3" }}>
+          <div className="flex justify-center mb-3">
+            <KeyIcon size={36} color="#0E4B43" />
+          </div>
+          <h2 className="text-xl font-bold text-center mb-1" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>
+            ফ্যামিলি পাসকোড / সিক্রেট কোড
+          </h2>
+          <p className="text-xs text-center mb-5" style={{ color: "#666" }}>
+            আপনার পরিবারের ডাটা সুরক্ষিত রাখতে একটি যেকোনো সিক্রেট কোড লিখুন (যেমন: family123)। আপনার পরিবারের সকলে এই একই কোডটি ব্যবহার করবেন।
+          </p>
+          <input
+            type="text"
+            value={inputSecret}
+            onChange={(e) => setInputSecret(e.target.value)}
+            placeholder="সিক্রেট কোড লিখুন..."
+            className="w-full h-12 rounded-xl border px-4 outline-none mb-4 text-center font-bold tracking-widest text-lg"
+            style={{ borderColor: "#0E4B43" }}
+          />
+          <button
+            onClick={handleSaveSecret}
+            className="w-full h-12 rounded-xl font-bold text-white"
+            style={{ background: "#0E4B43" }}
+          >
+            প্রবেশ করুন
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (members === null) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "#F4F7F1" }}>
@@ -597,31 +586,21 @@ function App() {
     return (
       <div className="min-h-screen flex items-center justify-center px-6" style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}>
         <div className="w-full max-w-sm text-center">
-          <div className="flex justify-center mb-3">
-            <StarMark size={34} />
-          </div>
-          <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>
-            Daily Task
-          </h1>
-          <p className="mb-6" style={{ color: "#4B5A50" }}>
-            শুরু করতে পরিবারের প্রথম সদস্যের নাম দিন
-          </p>
+          <div className="flex justify-center mb-3"><StarMark size={34} /></div>
+          <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>Daily Task</h1>
+          <p className="mb-6" style={{ color: "#4B5A50" }}>শুরু করতে পরিবারের প্রথম সদস্যের নাম দিন</p>
           <div className="flex flex-col gap-3 items-center">
-            <div className="flex gap-2 w-full">
-              <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddMember()}
-                placeholder="নাম লিখুন"
-                className="flex-1 h-12 rounded-xl border px-4 outline-none"
-                style={{ borderColor: "#D8DED3", background: "#fff" }}
-                autoFocus
-              />
-            </div>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddMember()}
+              placeholder="নাম লিখুন"
+              className="w-full h-12 rounded-xl border px-4 outline-none"
+              style={{ borderColor: "#D8DED3", background: "#fff" }}
+              autoFocus
+            />
             <GenderToggle value={newGender} onChange={setNewGender} />
-            <button onClick={handleAddMember} className="h-12 px-5 rounded-xl font-semibold text-white w-full" style={{ background: "#0E4B43" }}>
-              যোগ করুন
-            </button>
+            <button onClick={handleAddMember} className="h-12 px-5 rounded-xl font-semibold text-white w-full" style={{ background: "#0E4B43" }}>যোগ করুন</button>
           </div>
         </div>
       </div>
@@ -644,27 +623,20 @@ function App() {
         `}</style>
         <div className="p-4 max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-2 no-print">
-            <button onClick={() => setPrintMode(false)} className="px-4 py-2 rounded-lg border font-semibold" style={{ borderColor: "#D8DED3" }}>
-              ← ফিরে যান
-            </button>
-            <button onClick={() => window.print()} className="px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}>
-              <Printer size={16} /> প্রিন্ট / PDF ডাউনলোড
-            </button>
+            <button onClick={() => setPrintMode(false)} className="px-4 py-2 rounded-lg border font-semibold" style={{ borderColor: "#D8DED3" }}>← ফিরে যান</button>
+            <button onClick={() => window.print()} className="px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}><Printer size={16} /> প্রিন্ট / PDF ডাউনলোড</button>
           </div>
           <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 20, fontWeight: 700, textAlign: "center" }}>
             Daily Task — {BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}
           </h1>
           <p style={{ textAlign: "center", marginBottom: 8 }}>
-            নাম: {selectedMember?.name} &nbsp;|&nbsp; পূরণ করা দিন: {toBn(monthStats.filled)}/{toBn(total)}
-            &nbsp;|&nbsp; গড় স্কোর: {toBn(monthStats.avgPct)}%
+            নাম: {selectedMember?.name} &nbsp;|&nbsp; পূরণ করা দিন: {toBn(monthStats.filled)}/{toBn(total)} &nbsp;|&nbsp; গড় স্কোর: {toBn(monthStats.avgPct)}%
           </p>
           <table>
             <thead>
               <tr>
                 <th>তাং</th>
-                {ALL_FIELDS.map((f) => (
-                  <th key={f.key}>{f.label.split("(")[0].trim()}</th>
-                ))}
+                {ALL_FIELDS.map((f) => <th key={f.key}>{f.label.split("(")[0].trim()}</th>)}
                 <th>স্কোর</th>
               </tr>
             </thead>
@@ -713,18 +685,17 @@ function App() {
     <div className="min-h-screen pb-16" style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}>
       {/* Header */}
       <div style={{ background: "#0E4B43" }} className="px-5 pt-6 pb-8 relative overflow-hidden">
-        <div className="absolute -right-6 -top-6 opacity-10">
-          <StarMark size={140} color="#F4F7F1" />
+        <div className="absolute -right-6 -top-6 opacity-10"><StarMark size={140} color="#F4F7F1" /></div>
+        <div className="relative flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <StarMark size={20} />
+            <h1 className="text-xl font-bold" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#F4F7F1" }}>Daily Task</h1>
+          </div>
+          <button onClick={() => setShowSecretModal(true)} className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1" style={{ background: "rgba(255,255,255,0.15)", color: "#F4F7F1" }}>
+            <KeyIcon size={12} /> পাসকোড
+          </button>
         </div>
-        <div className="relative flex items-center gap-2 mb-1">
-          <StarMark size={20} />
-          <h1 className="text-xl font-bold" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#F4F7F1" }}>
-            Daily Task
-          </h1>
-        </div>
-        <p className="relative text-sm" style={{ color: "#C7D6CD" }}>
-          দ্বীন ও দুনিয়ার ব্যালেন্স ট্র্যাকার
-        </p>
+        <p className="relative text-sm" style={{ color: "#C7D6CD" }}>দ্বীন ও দুনিয়ার ব্যালেন্স ট্র্যাকার</p>
 
         {/* Member selector */}
         <div className="relative flex gap-2 mt-5 flex-wrap">
@@ -732,12 +703,8 @@ function App() {
             confirmDeleteId === m.id ? (
               <div key={m.id} className="px-2.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5" style={{ background: "rgba(255,255,255,0.12)", color: "#F4F7F1" }}>
                 <span>{m.name} মুছবেন?</span>
-                <button onClick={() => handleDeleteMember(m.id)} className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "#C1666B" }}>
-                  <Check size={13} color="#fff" />
-                </button>
-                <button onClick={() => setConfirmDeleteId(null)} className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.2)" }}>
-                  <X size={13} color="#fff" />
-                </button>
+                <button onClick={() => handleDeleteMember(m.id)} className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "#C1666B" }}><Check size={13} color="#fff" /></button>
+                <button onClick={() => setConfirmDeleteId(null)} className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.2)" }}><X size={13} color="#fff" /></button>
               </div>
             ) : (
               <button
@@ -750,14 +717,7 @@ function App() {
                 }}
               >
                 <User size={13} /> {m.name}
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmDeleteId(m.id);
-                  }}
-                  className="w-5 h-5 rounded-full flex items-center justify-center ml-0.5"
-                  style={{ background: "rgba(0,0,0,0.12)" }}
-                >
+                <span onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(m.id); }} className="w-5 h-5 rounded-full flex items-center justify-center ml-0.5" style={{ background: "rgba(0,0,0,0.12)" }}>
                   <X size={11} color={m.id === selectedId ? "#16302B" : "#F4F7F1"} />
                 </span>
               </button>
@@ -770,18 +730,8 @@ function App() {
           ) : (
             <div className="flex flex-col gap-1.5 p-2 rounded-2xl" style={{ background: "rgba(255,255,255,0.12)" }}>
               <div className="flex gap-1">
-                <input
-                  autoFocus
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddMember()}
-                  placeholder="নাম"
-                  className="w-24 px-2 rounded-full text-sm outline-none"
-                  style={{ border: "none" }}
-                />
-                <button onClick={handleAddMember} className="px-3 rounded-full text-sm font-semibold" style={{ background: "#C89B3C", color: "#16302B" }}>
-                  ঠিক আছে
-                </button>
+                <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddMember()} placeholder="নাম" className="w-24 px-2 rounded-full text-sm outline-none" style={{ border: "none" }} />
+                <button onClick={handleAddMember} className="px-3 rounded-full text-sm font-semibold" style={{ background: "#C89B3C", color: "#16302B" }}>ঠিক আছে</button>
               </div>
               <GenderToggle value={newGender} onChange={setNewGender} light />
             </div>
@@ -792,35 +742,27 @@ function App() {
       {/* Date nav */}
       <div className="px-5 -mt-4">
         <div className="bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center justify-between" style={{ border: "1px solid #E7EEE3" }}>
-          <button onClick={() => changeDay(-1)} className="w-9 h-9 flex items-center justify-center rounded-full" style={{ background: "#F4F7F1" }}>
-            <ChevronLeft size={18} color="#0E4B43" />
-          </button>
+          <button onClick={() => changeDay(-1)} className="w-9 h-9 flex items-center justify-center rounded-full" style={{ background: "#F4F7F1" }}><ChevronLeft size={18} color="#0E4B43" /></button>
           <div className="text-center">
             <div className="font-semibold" style={{ color: "#16302B" }}>
               {isToday ? "আজ" : BN_WEEKDAYS[viewDate.getDay()]} · {toBn(viewDate.getDate())} {BN_MONTHS[viewDate.getMonth()]} {toBn(viewDate.getFullYear())}
             </div>
           </div>
-          <button onClick={() => changeDay(1)} className="w-9 h-9 flex items-center justify-center rounded-full" style={{ background: "#F4F7F1" }}>
-            <ChevronRight size={18} color="#0E4B43" />
-          </button>
+          <button onClick={() => changeDay(1)} className="w-9 h-9 flex items-center justify-center rounded-full" style={{ background: "#F4F7F1" }}><ChevronRight size={18} color="#0E4B43" /></button>
         </div>
       </div>
 
       {/* Entry form */}
       <div className="px-5 mt-5 space-y-4">
         {loadingEntry ? (
-          <div className="flex justify-center py-10">
-            <Loader2 className="animate-spin" color="#0E4B43" size={22} />
-          </div>
+          <div className="flex justify-center py-10"><Loader2 className="animate-spin" color="#0E4B43" size={22} /></div>
         ) : (
           <>
             <FieldGroup title="দ্বীন" fields={DEEN_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
             <FieldGroup title="দুনিয়া" fields={DUNIYA_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
 
             <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-              <label className="block text-sm font-semibold mb-2" style={{ color: "#16302B" }}>
-                দিনের নোট / আত্ম-সমালোচনা
-              </label>
+              <label className="block text-sm font-semibold mb-2" style={{ color: "#16302B" }}>দিনের নোট / আত্ম-সমালোচনা</label>
               <textarea
                 value={entry.note || ""}
                 onChange={(e) => updateField("note", e.target.value)}
@@ -847,27 +789,11 @@ function App() {
       {/* Monthly overview */}
       <div className="px-5 mt-8">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold flex items-center gap-1.5" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>
-            <CalIcon size={16} /> মাসিক ওভারভিউ
-          </h2>
+          <h2 className="font-bold flex items-center gap-1.5" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}><CalIcon size={16} /> মাসিক ওভারভিউ</h2>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setMonthCursor((c) => (c.month0 === 0 ? { year: c.year - 1, month0: 11 } : { year: c.year, month0: c.month0 - 1 }))}
-              className="w-7 h-7 flex items-center justify-center rounded-full bg-white"
-              style={{ border: "1px solid #E7EEE3" }}
-            >
-              <ChevronLeft size={14} color="#0E4B43" />
-            </button>
-            <span className="text-sm font-semibold px-1" style={{ color: "#16302B" }}>
-              {BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}
-            </span>
-            <button
-              onClick={() => setMonthCursor((c) => (c.month0 === 11 ? { year: c.year + 1, month0: 0 } : { year: c.year, month0: c.month0 + 1 }))}
-              className="w-7 h-7 flex items-center justify-center rounded-full bg-white"
-              style={{ border: "1px solid #E7EEE3" }}
-            >
-              <ChevronRight size={14} color="#0E4B43" />
-            </button>
+            <button onClick={() => setMonthCursor((c) => (c.month0 === 0 ? { year: c.year - 1, month0: 11 } : { year: c.year, month0: c.month0 - 1 }))} className="w-7 h-7 flex items-center justify-center rounded-full bg-white" style={{ border: "1px solid #E7EEE3" }}><ChevronLeft size={14} color="#0E4B43" /></button>
+            <span className="text-sm font-semibold px-1" style={{ color: "#16302B" }}>{BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}</span>
+            <button onClick={() => setMonthCursor((c) => (c.month0 === 11 ? { year: c.year + 1, month0: 0 } : { year: c.year, month0: c.month0 + 1 }))} className="w-7 h-7 flex items-center justify-center rounded-full bg-white" style={{ border: "1px solid #E7EEE3" }}><ChevronRight size={14} color="#0E4B43" /></button>
           </div>
         </div>
 
@@ -875,32 +801,20 @@ function App() {
           <div className="flex items-center justify-between mb-4">
             <Stat label="গড় স্কোর" value={`${toBn(monthStats.avgPct)}%`} />
             <Stat label="পূরণ করা দিন" value={`${toBn(monthStats.filled)}/${toBn(total)}`} />
-            <button
-              onClick={() => setPrintMode(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold"
-              style={{ background: "#F4F7F1", color: "#0E4B43", border: "1px solid #E7EEE3" }}
-            >
+            <button onClick={() => setPrintMode(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold" style={{ background: "#F4F7F1", color: "#0E4B43", border: "1px solid #E7EEE3" }}>
               <Printer size={14} /> PDF
             </button>
           </div>
 
           {loadingMonth ? (
-            <div className="flex justify-center py-6">
-              <Loader2 className="animate-spin" color="#0E4B43" size={18} />
-            </div>
+            <div className="flex justify-center py-6"><Loader2 className="animate-spin" color="#0E4B43" size={18} /></div>
           ) : (
             <>
               <div className="grid grid-cols-7 gap-1.5 mb-1">
-                {BN_WEEKDAYS.map((w) => (
-                  <div key={w} className="text-center text-[10px] font-semibold" style={{ color: "#8A9A8F" }}>
-                    {w}
-                  </div>
-                ))}
+                {BN_WEEKDAYS.map((w) => <div key={w} className="text-center text-[10px] font-semibold" style={{ color: "#8A9A8F" }}>{w}</div>)}
               </div>
               <div className="grid grid-cols-7 gap-1.5">
-                {Array.from({ length: leadBlanks }).map((_, i) => (
-                  <div key={"b" + i} />
-                ))}
+                {Array.from({ length: leadBlanks }).map((_, i) => <div key={"b" + i} />)}
                 {Array.from({ length: total }, (_, i) => i + 1).map((d) => {
                   const e = monthEntries[pad2(d)];
                   const s = dailyScore(e, selectedMember);
@@ -929,45 +843,18 @@ function App() {
 
       {/* Weekly reflection */}
       <div className="px-5 mt-8">
-        <h2 className="font-bold mb-3" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>
-          সাপ্তাহিক রিফ্লেকশন
-        </h2>
+        <h2 className="font-bold mb-3" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>সাপ্তাহিক রিফ্লেকশন</h2>
         <div className="space-y-3">
           {loadingWeekly ? (
-            <div className="flex justify-center py-4">
-              <Loader2 className="animate-spin" color="#0E4B43" size={18} />
-            </div>
+            <div className="flex justify-center py-4"><Loader2 className="animate-spin" color="#0E4B43" size={18} /></div>
           ) : (
             [1, 2, 3, 4, 5].map((w) => (
               <div key={w} className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-                <div className="text-sm font-bold mb-2" style={{ color: "#0E4B43" }}>
-                  সপ্তাহ {toBn(w)}
-                </div>
+                <div className="text-sm font-bold mb-2" style={{ color: "#0E4B43" }}>সপ্তাহ {toBn(w)}</div>
                 <div className="space-y-2">
-                  <textarea
-                    value={weekly[w]?.good || ""}
-                    onChange={(e) => updateWeekly(w, "good", e.target.value)}
-                    placeholder="এই সপ্তাহে যা ভালো হয়েছে"
-                    rows={2}
-                    className="w-full rounded-lg border p-2 text-sm outline-none resize-none"
-                    style={{ borderColor: "#D8DED3" }}
-                  />
-                  <textarea
-                    value={weekly[w]?.gap || ""}
-                    onChange={(e) => updateWeekly(w, "gap", e.target.value)}
-                    placeholder="কোথায় ঘাটতি ছিল"
-                    rows={2}
-                    className="w-full rounded-lg border p-2 text-sm outline-none resize-none"
-                    style={{ borderColor: "#D8DED3" }}
-                  />
-                  <textarea
-                    value={weekly[w]?.plan || ""}
-                    onChange={(e) => updateWeekly(w, "plan", e.target.value)}
-                    placeholder="আগামী সপ্তাহে উন্নতির পরিকল্পনা"
-                    rows={2}
-                    className="w-full rounded-lg border p-2 text-sm outline-none resize-none"
-                    style={{ borderColor: "#D8DED3" }}
-                  />
+                  <textarea value={weekly[w]?.good || ""} onChange={(e) => updateWeekly(w, "good", e.target.value)} placeholder="এই সপ্তাহে যা ভালো হয়েছে" rows={2} className="w-full rounded-lg border p-2 text-sm outline-none resize-none" style={{ borderColor: "#D8DED3" }} />
+                  <textarea value={weekly[w]?.gap || ""} onChange={(e) => updateWeekly(w, "gap", e.target.value)} placeholder="কোথায় ঘাটতি ছিল" rows={2} className="w-full rounded-lg border p-2 text-sm outline-none resize-none" style={{ borderColor: "#D8DED3" }} />
+                  <textarea value={weekly[w]?.plan || ""} onChange={(e) => updateWeekly(w, "plan", e.target.value)} placeholder="আগামী সপ্তাহে উন্নতির পরিকল্পনা" rows={2} className="w-full rounded-lg border p-2 text-sm outline-none resize-none" style={{ borderColor: "#D8DED3" }} />
                 </div>
               </div>
             ))
@@ -983,6 +870,10 @@ function App() {
           </button>
         </div>
       </div>
+
+      <p className="text-center text-[11px] mt-6 px-8" style={{ color: "#8A9A8F" }}>
+        একই সিক্রেট কোড ব্যবহারকারী সদস্যদের ডাটা সিঙ্ক থাকবে।
+      </p>
     </div>
   );
 }
@@ -993,19 +884,13 @@ function GenderToggle({ value, onChange, light }) {
     : { off: "#F4F7F1", offText: "#4B5A50", on: "#0E4B43", onText: "#fff" };
   return (
     <div className="flex rounded-xl overflow-hidden" style={{ border: `1px solid ${light ? "rgba(255,255,255,0.2)" : "#D8DED3"}` }}>
-      {[
-        { key: "male", label: "পুরুষ" },
-        { key: "female", label: "মহিলা" },
-      ].map((g) => (
+      {[{ key: "male", label: "পুরুষ" }, { key: "female", label: "মহিলা" }].map((g) => (
         <button
           key={g.key}
           type="button"
           onClick={() => onChange(g.key)}
           className="px-3 h-9 text-sm font-semibold"
-          style={{
-            background: value === g.key ? base.on : base.off,
-            color: value === g.key ? base.onText : base.offText,
-          }}
+          style={{ background: value === g.key ? base.on : base.off, color: value === g.key ? base.onText : base.offText }}
         >
           {g.label}
         </button>
@@ -1017,12 +902,8 @@ function GenderToggle({ value, onChange, light }) {
 function Stat({ label, value }) {
   return (
     <div>
-      <div className="text-[11px]" style={{ color: "#8A9A8F" }}>
-        {label}
-      </div>
-      <div className="text-lg font-bold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}>
-        {value}
-      </div>
+      <div className="text-[11px]" style={{ color: "#8A9A8F" }}>{label}</div>
+      <div className="text-lg font-bold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}>{value}</div>
     </div>
   );
 }
@@ -1032,27 +913,14 @@ function FieldGroup({ title, fields, entry, onChange, member }) {
   if (!visibleFields.length) return null;
   return (
     <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
-      <h3 className="text-sm font-bold mb-3 tracking-wide" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#0E4B43" }}>
-        {title}
-      </h3>
+      <h3 className="text-sm font-bold mb-3 tracking-wide" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#0E4B43" }}>{title}</h3>
       <div className="space-y-3">
         {visibleFields.map((f) => (
           <div key={f.key} className="flex items-center justify-between gap-3">
-            <span className="text-sm" style={{ color: "#33443A" }}>
-              {f.label}
-            </span>
-            {f.type === "bool" && (
-              <BoolToggle value={!!entry[f.key]} onChange={(v) => onChange(f.key, v)} />
-            )}
-            {f.type === "count" && (
-              <CountStepper value={entry[f.key]} max={f.max} onChange={(v) => onChange(f.key, v)} />
-            )}
-            {f.type === "number" && (
-              <NumberField value={entry[f.key]} target={f.target} onChange={(v) => onChange(f.key, v)} />
-            )}
-            {f.type === "time" && (
-              <TimeField value={entry[f.key]} onChange={(v) => onChange(f.key, v)} />
-            )}
+            <span className="text-sm" style={{ color: "#33443A" }}>{f.label}</span>
+            {f.type === "bool" && <BoolToggle value={!!entry[f.key]} onChange={(v) => onChange(f.key, v)} />}
+            {f.type === "count" && <CountStepper value={entry[f.key]} max={f.max} onChange={(v) => onChange(f.key, v)} />}
+            {f.type === "number" && <NumberField value={entry[f.key]} target={f.target} onChange={(v) => onChange(f.key, v)} />}
           </div>
         ))}
       </div>
@@ -1060,9 +928,7 @@ function FieldGroup({ title, fields, entry, onChange, member }) {
   );
 }
 
-const container = document.getElementById("root");
-const root = ReactDOM.createRoot(container);
-root.render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
