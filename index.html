@@ -179,28 +179,28 @@ function useFonts() {
 }
 
 const DEFAULT_DEEN_FIELDS = [
-  { key: "fardPrayers", label: "ফরজ কাযা নামাজ (কয় ওয়াক্ত?)", shortLabel: "ফরজ কাযা", type: "count", max: 5 },
-  { key: "jamaat", label: "জামায়াতে নামাজ (কয় ওয়াক্ত?)", shortLabel: "জামায়াতে নামাজ", type: "count", max: 5, appliesTo: "male" },
-  { key: "sunnahNafl", label: "সুন্নত/নফল নামাজ", shortLabel: "সুন্নত/নফল", type: "bool" },
+  { key: "fardPrayers", label: "ফরজ কাযা নামাজ (কয় ওয়াক্ত?)", shortLabel: "ফরজ\nকাযা", type: "count", max: 5 },
+  { key: "jamaat", label: "জামায়াতে নামাজ (কয় ওয়াক্ত?)", shortLabel: "জামায়াতে\nনামাজ", type: "count", max: 5, appliesTo: "male" },
+  { key: "sunnahNafl", label: "সুন্নত/নফল নামাজ", shortLabel: "সুন্নত/\nনফল", type: "bool" },
   { key: "tahajjud", label: "নফল সিয়াম/ তাহাজ্জুদ", shortLabel: "তাহাজ্জুদ", type: "bool" },
-  { key: "dhikr", label: "ইস্তেগফার/যিকির/দোয়া", shortLabel: "যিকির/দোয়া", type: "bool" },
+  { key: "dhikr", label: "ইস্তেগফার/যিকির/দোয়া", shortLabel: "যিকির/\nদোয়া", type: "bool" },
   { key: "quranPages", label: "কুরআন/তাফসীর ও আরবি শেখা (পৃষ্ঠা)", shortLabel: "কুরআন", type: "number", target: 5 },
   { key: "seerah", label: "সীরাত/জীবনী/ইতিহাস", shortLabel: "সীরাত", type: "bool" },
-  { key: "selfStudy", label: "ইলম অর্জন/কোর্সের পড়া", shortLabel: "ইলম অর্জন", type: "bool" },
+  { key: "selfStudy", label: "ইলম অর্জন/কোর্সের পড়া", shortLabel: "ইলম\nঅর্জন", type: "bool" },
   { key: "taleem", label: "তালিম/পাঠচক্র", shortLabel: "তালিম", type: "bool" },
   { key: "dawah", label: "দাওয়াহ/দ্বীনের দাওয়াত", shortLabel: "দাওয়াহ", type: "bool" },
   { key: "sadaqah", label: "দান/সাদাকা/পরোপকার", shortLabel: "সাদাকা", type: "bool" },
 ];
 
 const DEFAULT_DUNIYA_FIELDS = [
-  { key: "earlyMorning", label: "ভোরের বরকতময় সময়কে কাজে লাগানো", shortLabel: "ভোরের সময়", type: "bool" },
+  { key: "earlyMorning", label: "ভোরের বরকতময় সময়কে কাজে লাগানো", shortLabel: "ভোরের\nসময়", type: "bool" },
   { key: "exercise", label: "ব্যায়াম/শরীরচর্চা", shortLabel: "ব্যায়াম", type: "bool" },
-  { key: "healthyFood", label: "স্বাস্থ্যকর খাবার", shortLabel: "স্বাস্থ্যকর খাবার", type: "bool" },
-  { key: "familyTime", label: "পরিবার ও নিকট আত্মীয়দের সময় দেওয়া", shortLabel: "পারিবারিক সময়", type: "bool" },
-  { key: "screenLimit", label: "সোশ্যাল মিডিয়া/মোবাইল সীমিত ব্যবহার", shortLabel: "সীমিত স্ক্রিন", type: "bool" },
+  { key: "healthyFood", label: "স্বাস্থ্যকর খাবার", shortLabel: "স্বাস্থ্যকর\nখাবার", type: "bool" },
+  { key: "familyTime", label: "পরিবার ও নিকট আত্মীয়দের সময় দেওয়া", shortLabel: "পারিবারিক\nসময়", type: "bool" },
+  { key: "screenLimit", label: "সোশ্যাল মিডিয়া/মোবাইল সীমিত ব্যবহার", shortLabel: "সীমিত\nস্ক্রিন", type: "bool" },
   { key: "noHurtingOthers", label: "অন্যের হক নষ্ট/মনে কষ্ট না দেয়া", shortLabel: "সদাচরণ", type: "bool" },
-  { key: "noProcrastination", label: "অলসতা/কাজ ফেলে না রাখা", shortLabel: "অলসতা মুক্ত", type: "bool" },
-  { key: "phoneOffBy11", label: "রাত ১১টার মধ্যে ফোন/ইন্টারনেট বন্ধ", shortLabel: "১১টায় ফোন বন্ধ", type: "bool" },
+  { key: "noProcrastination", label: "অলসতা/কাজ ফেলে না রাখা", shortLabel: "অলসতা\nমুক্ত", type: "bool" },
+  { key: "phoneOffBy11", label: "রাত ১১টার মধ্যে ফোন/ইন্টারনেট বন্ধ", shortLabel: "১১টায়\nফোন", type: "bool" },
 ];
 
 function fieldApplies(field, member) {
@@ -811,35 +811,48 @@ function App() {
       <div style={{ color: "#111", background: "#fff" }}>
         <style>{`
           table { border-collapse: collapse; width: 100%; table-layout: fixed; }
-          th, td { border: 1px solid #000; padding: 2px 1px; font-size: 7.5px; text-align: center; vertical-align: middle; word-wrap: break-word; }
-          th { background: #0E4B43 !important; color: #fff !important; font-weight: 600; font-size: 7.5px; height: 26px; }
-          tr { height: 14px; }
+          th, td { border: 1px solid #000; padding: 4px 1px; font-size: 8.5px; text-align: center; vertical-align: middle; word-wrap: break-word; }
+          th { background: #0E4B43 !important; color: #fff !important; font-weight: 600; font-size: 8.5px; padding: 4px 1px; line-height: 1.15; }
+          tr { height: 16px; }
 
-          .meeting-table th { background: #f0f4f1 !important; color: #000 !important; font-size: 11px; font-weight: 700; height: 30px; border: 1px solid #333; }
-          .meeting-table td { font-size: 10px; padding: 6px; border: 1px solid #333; text-align: left; }
+          .meeting-table th { background: #f0f4f1 !important; color: #000 !important; font-size: 11px; font-weight: 700; height: 32px; border: 1px solid #333; }
+          .meeting-table td { font-size: 10px; padding: 8px; border: 1px solid #333; text-align: left; }
         `}</style>
         
         {/* PAGE 1: Monthly Report & Checklist */}
         <div className="w-full mx-auto" style={{ minHeight: "270mm" }}>
-          <div className="flex items-center justify-between mb-2 no-print">
+          <div className="flex items-center justify-between mb-3 no-print">
             <button onClick={() => setPrintMode(false)} className="px-3 py-1.5 rounded-lg border text-sm font-semibold bg-white" style={{ borderColor: "#D8DED3" }}>← ফিরে যান</button>
             <button onClick={() => window.print()} className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}><Printer size={14} /> প্রিন্ট / PDF ডাউনলোড (২টি পেজ)</button>
           </div>
           
-          <div style={{ borderBottom: "2px solid #0E4B43", paddingBottom: "4px", marginBottom: "6px" }} className="flex justify-between items-end">
+          <div style={{ borderBottom: "2px solid #0E4B43", paddingBottom: "6px", marginBottom: "8px" }} className="flex justify-between items-end">
             <div>
-              <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 15, fontWeight: 700, margin: 0, color: "#0E4B43" }}>মাসিক আমল ও পারফরম্যান্স রিপোর্ট</h1>
-              <p style={{ fontSize: 9, margin: "2px 0 0 0", color: "#444" }}>মাস: <b>{BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}</b> &nbsp;|&nbsp; সদস্য: <b>{selectedMember?.name}</b> &nbsp;|&nbsp; কোড: <b>{getFamilyCode()}</b></p>
+              <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 16, fontWeight: 700, margin: 0, color: "#0E4B43" }}>মাসিক আমল ও পারফরম্যান্স রিপোর্ট</h1>
+              <p style={{ fontSize: 10, margin: "3px 0 0 0", color: "#444" }}>মাস: <b>{BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}</b> &nbsp;|&nbsp; সদস্য: <b>{selectedMember?.name}</b> &nbsp;|&nbsp; কোড: <b>{getFamilyCode()}</b></p>
             </div>
-            <div style={{ fontSize: 9, textAlign: "right", color: "#333" }}>পূরণ করা দিন: <b>{toBn(monthStats.filled)}/{toBn(total)}</b> &nbsp;|&nbsp; গড় স্কোর: <b>{toBn(monthStats.avgPct)}%</b></div>
+            <div style={{ fontSize: 10, textAlign: "right", color: "#333" }}>পূরণ করা দিন: <b>{toBn(monthStats.filled)}/{toBn(total)}</b> &nbsp;|&nbsp; গড় স্কোর: <b>{toBn(monthStats.avgPct)}%</b></div>
           </div>
           
           <table>
             <thead>
               <tr>
-                <th style={{ width: "20px" }}>তাং</th>
-                {allFields.map((f) => (<th key={f.key}>{f.shortLabel || f.label}</th>))}
-                <th style={{ width: "26px" }}>স্কোর</th>
+                <th style={{ width: "22px" }}>তাং</th>
+                {allFields.map((f) => {
+                  const labelStr = f.shortLabel || f.label;
+                  const parts = labelStr.split('\n');
+                  return (
+                    <th key={f.key}>
+                      {parts.map((p, idx) => (
+                        <React.Fragment key={idx}>
+                          {p}
+                          {idx < parts.length - 1 && <br />}
+                        </React.Fragment>
+                      ))}
+                    </th>
+                  );
+                })}
+                <th style={{ width: "28px" }}>স্কোর</th>
               </tr>
             </thead>
             <tbody>
@@ -872,22 +885,17 @@ function App() {
               </tr>
             </tfoot>
           </table>
-          <div style={{ fontSize: "8px", textTransform: "uppercase", color: "#888", textAlign: "right", marginTop: "4px" }}>পৃষ্ঠা ১</div>
+          <div style={{ fontSize: "9px", textTransform: "uppercase", color: "#888", textAlign: "right", marginTop: "6px" }}>পৃষ্ঠা ১</div>
         </div>
 
-        {/* PAGE 2: Graph & Family Meeting */}
-        <div className="page-break w-full mx-auto" style={{ paddingTop: "8mm" }}>
+        {/* PAGE 2: Family Meeting */}
+        <div className="page-break w-full mx-auto" style={{ paddingTop: "5mm" }}>
           
-          <div style={{ border: "1px solid #ddd", padding: "8px", borderRadius: "8px", marginBottom: "15px" }}>
-            <h3 style={{ fontSize: "12px", fontWeight: "bold", margin: "0 0 6px 0", color: "#0E4B43" }}>মাসিক অগ্রগতি গ্রাফ (Monthly Progress)</h3>
-            <ProgressChart monthEntries={monthEntries} totalDays={monthStats.total} member={selectedMember} allFields={allFields} />
-          </div>
-
-          <div style={{ textAlign: "center", marginBottom: "12px", position: "relative" }}>
-            <h2 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 20, fontWeight: 700, margin: 0, color: "#000" }}>
+          <div style={{ textAlign: "center", marginBottom: "16px", position: "relative" }}>
+            <h2 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 22, fontWeight: 700, margin: 0, color: "#000" }}>
               মাসিক পারিবারিক সভা ও সিদ্ধান্ত
             </h2>
-            <div style={{ fontSize: 13, marginTop: "2px", color: "#333", fontWeight: "600" }}>
+            <div style={{ fontSize: 14, marginTop: "4px", color: "#333", fontWeight: "600" }}>
               {meetingState.meetingSubHeader || `${BN_MONTHS[monthCursor.month0]}'${toBn(monthCursor.year)}`}
             </div>
             <div style={{ position: "absolute", right: "0", top: "5px", fontSize: "12px", fontWeight: "bold", color: "#111" }}>
@@ -906,7 +914,7 @@ function App() {
             </thead>
             <tbody>
               {(meetingState.rows && meetingState.rows.length > 0 ? meetingState.rows : [{}]).map((row, idx) => (
-                <tr key={idx} style={{ height: "40px" }}>
+                <tr key={idx} style={{ height: "45px" }}>
                   <td style={{ textAlign: "center", fontWeight: "bold" }}>{toBn(idx + 1)}</td>
                   <td style={{ fontWeight: "600", verticalAlign: "top", whiteSpace: "pre-wrap" }}>{row.topic || ""}</td>
                   <td style={{ verticalAlign: "top", whiteSpace: "pre-wrap" }}>{row.decision || ""}</td>
@@ -915,7 +923,7 @@ function App() {
               ))}
             </tbody>
           </table>
-          <div style={{ fontSize: "8px", textTransform: "uppercase", color: "#888", textAlign: "right", marginTop: "10px" }}>পৃষ্ঠা ২</div>
+          <div style={{ fontSize: "9px", textTransform: "uppercase", color: "#888", textAlign: "right", marginTop: "12px" }}>পৃষ্ঠা ২</div>
         </div>
       </div>
     );
