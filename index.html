@@ -1,246 +1,1068 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell 
-} from 'recharts';
-import { 
-  Calendar, CheckCircle, Flame, Trophy, User, ChevronLeft, ChevronRight 
-} from 'lucide-react';
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Daily Task — দ্বীন ও দুনিয়া ট্র্যাকার</title>
+<meta name="theme-color" content="#0E4B43" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
 
-const MEMBERS = [
-  { id: 'tuhin', name: 'Tuhin' },
-  { id: 'sumi', name: 'Sumi' },
-];
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
 
-const TASKS = [
-  { id: 'fajr', label: 'ফজর' },
-  { id: 'dhuhr', label: 'জোহোর' },
-  { id: 'asr', label: 'আসর' },
-  { id: 'maghrib', label: 'মাগরিব' },
-  { id: 'isha', label: 'ইশা' },
-  { id: 'quran', label: 'কুরআন তিলাওয়াত' },
-];
+<!-- React 18 + Babel -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-const STORAGE_KEY = 'ibadah_tracker_data_v1';
+<!-- Firebase compat libraries -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-const getDaysInMonth = (year, month0) => new Date(year, month0 + 1, 0).getDate();
+<style>
+  html, body { background: #F4F7F1; margin: 0; padding: 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
 
-const pad2 = (n) => String(n).padStart(2, '0');
+<script>
+  // Firebase Setup
+  const firebaseConfig = {
+    apiKey: "AIzaSyCqvGSmjEY6PRnsdGh016Ta1m8PLjolqgA",
+    authDomain: "daily-task-family.firebaseapp.com",
+    projectId: "daily-task-family",
+    storageBucket: "daily-task-family.firebasestorage.app",
+    messagingSenderId: "10031644603",
+    appId: "1:10031644603:web:afaf01434c65147d988e9e"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  db.enablePersistence().catch(() => {});
+  const FAMILY_COLLECTION = "daily_task_data";
 
-const formatDateKey = (year, month0, day) => {
-  return `${year}-${pad2(month0 + 1)}-${pad2(day)}`;
-};
-
-export default function App() {
-  const [selectedMember, setSelectedMember] = useState('tuhin');
-  const [currentDate, setCurrentDate] = useState(() => new Date());
-  
-  const [data, setData] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : {};
-    } catch (e) {
-      console.error('Failed to load storage', e);
-      return {};
+  // appStorage Shim
+  const appStorage = {
+    async get(key, shared) {
+      if (!shared) {
+        const v = localStorage.getItem(key);
+        return v !== null ? { key, value: v, shared } : null;
+      }
+      const doc = await db.collection(FAMILY_COLLECTION).doc(key).get();
+      if (!doc.exists) return null;
+      return { key, value: doc.data().value, shared };
+    },
+    async set(key, value, shared) {
+      if (!shared) {
+        localStorage.setItem(key, value);
+        return { key, value, shared };
+      }
+      await db.collection(FAMILY_COLLECTION).doc(key).set({ value, updatedAt: Date.now() });
+      return { key, value, shared };
+    },
+    async delete(key, shared) {
+      if (!shared) {
+        localStorage.removeItem(key);
+        return { key, deleted: true, shared };
+      }
+      await db.collection(FAMILY_COLLECTION).doc(key).delete();
+      return { key, deleted: true, shared };
+    },
+    async list(prefix, shared) {
+      if (!shared) {
+        const keys = Object.keys(localStorage).filter((k) => !prefix || k.startsWith(prefix));
+        return { keys, prefix, shared };
+      }
+      let q = db.collection(FAMILY_COLLECTION);
+      if (prefix) {
+        q = q
+          .where(firebase.firestore.FieldPath.documentId(), ">=", prefix)
+          .where(firebase.firestore.FieldPath.documentId(), "<", prefix + "\uf8ff");
+      }
+      const snap = await q.get();
+      const keys = snap.docs.map((d) => d.id);
+      return { keys, prefix, shared };
     }
+  };
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+</script>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useMemo } = React;
+
+function Icon({ children, size = 18, color = "currentColor", className, style }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      className={className} style={style}>
+      {children}
+    </svg>
+  );
+}
+function Plus({ size, color, className }) {
+  return <Icon size={size} color={color} className={className}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Icon>;
+}
+function ChevronLeft({ size, color, className }) {
+  return <Icon size={size} color={color} className={className}><polyline points="15 18 9 12 15 6"/></Icon>;
+}
+function ChevronRight({ size, color, className }) {
+  return <Icon size={size} color={color} className={className}><polyline points="9 18 15 12 9 6"/></Icon>;
+}
+function Printer({ size, color, className }) {
+  return <Icon size={size} color={color} className={className}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></Icon>;
+}
+function Check({ size, color, className }) {
+  return <Icon size={size} color={color} className={className}><polyline points="20 6 9 17 4 12"/></Icon>;
+}
+function X({ size, color, className }) {
+  return <Icon size={size} color={color} className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>;
+}
+function User({ size, color, className }) {
+  return <Icon size={size} color={color} className={className}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></Icon>;
+}
+function CalIcon({ size, color, className }) {
+  return <Icon size={size} color={color} className={className}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></Icon>;
+}
+function Loader2({ size, color, className }) {
+  return (
+    <Icon size={size} color={color} className={className}>
+      <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+      <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
+      <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+      <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+    </Icon>
+  );
+}
+
+function useFonts() {
+  useEffect(() => {
+    const id = "dt-fonts";
+    if (document.getElementById(id)) return;
+    const link = document.createElement("link");
+    link.id = id;
+    link.rel = "stylesheet";
+    link.href =
+      "https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@500;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap";
+    document.head.appendChild(link);
+  }, []);
+}
+
+const DEEN_FIELDS = [
+  { key: "fardPrayers", label: "ফরজ কাযা নামাজ (কয়টি?)", type: "count", max: 5 },
+  { key: "jamaat", label: "জামাতে নামাজ (কয় ওয়াক্ত?)", type: "count", max: 5, appliesTo: "male" },
+  { key: "sunnahNafl", label: "সুন্নত/নফল নামাজ", type: "bool" },
+  { key: "tahajjud", label: "তাহাজ্জুদ", type: "bool" },
+  { key: "dhikr", label: "যিকির/দোয়া", type: "bool" },
+  { key: "quranPages", label: "কুরআন/তাফসীর/আরবি (পৃষ্ঠা)", type: "number", target: 5 },
+  { key: "seerah", label: "সীরাত/জীবনী/ইতিহাস", type: "bool" },
+  { key: "selfStudy", label: "সেলফ স্টাডি/IOM/রিভিশন", type: "bool" },
+  { key: "taleem", label: "তালিম/পাঠচক্র", type: "bool" },
+  { key: "sadaqah", label: "সাদাকা/দান", type: "bool" },
+];
+
+const DUNIYA_FIELDS = [
+  { key: "wokeOnTime", label: "সময়মতো ঘুম থেকে ওঠা", type: "bool" },
+  { key: "wakeTime", label: "ঘুম থেকে ওঠার সময় (ঐচ্ছিক)", type: "time", info: true },
+  { key: "exercise", label: "ব্যায়াম/শরীরচর্চা", type: "bool" },
+  { key: "healthyFood", label: "স্বাস্থ্যকর খাবার", type: "bool" },
+  { key: "familyTime", label: "পরিবারকে সময় দেওয়া", type: "bool" },
+  { key: "screenLimit", label: "মোবাইল/সোশ্যাল মিডিয়া সীমিত", type: "bool" },
+  { key: "noHurtingOthers", label: "অন্যের হক নষ্ট/মনে কষ্ট না দেয়া", type: "bool" },
+  { key: "noProcrastination", label: "অলসতা/কাজ ফেলে না রাখা", type: "bool" },
+  { key: "phoneOffBy11", label: "রাত ১১টার মধ্যে ফোন/ইন্টারনেট বন্ধ", type: "bool" },
+];
+
+const ALL_FIELDS = [...DEEN_FIELDS, ...DUNIYA_FIELDS];
+const SCORED_FIELDS = ALL_FIELDS.filter((f) => !f.info);
+
+function fieldApplies(field, member) {
+  if (!field.appliesTo) return true;
+  if (!member || !member.gender) return true;
+  return field.appliesTo === member.gender;
+}
+
+const BN_DIGITS = "০১২৩৪৫৬৭৮৯";
+const toBn = (n) => String(n).replace(/[0-9]/g, (d) => BN_DIGITS[d]);
+
+const BN_MONTHS = [
+  "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন",
+  "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর",
+];
+const BN_WEEKDAYS = ["রবি", "সোম", "মঙ্গল", "বুধ", "বৃহ", "শুক্র", "শনি"];
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+function dateKey(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function monthPrefix(year, month0) { return `${year}-${pad2(month0 + 1)}`; }
+function daysInMonth(year, month0) { return new Date(year, month0 + 1, 0).getDate(); }
+
+function dailyScore(entry, member) {
+  if (!entry) return null;
+  let sum = 0;
+  let count = 0;
+  for (const f of SCORED_FIELDS) {
+    if (!fieldApplies(f, member)) continue;
+    count += 1;
+    if (f.type === "bool") {
+      sum += entry[f.key] ? 1 : 0;
+    } else if (f.type === "count") {
+      sum += Math.min(f.max, Number(entry[f.key]) || 0) / f.max;
+    } else if (f.type === "number") {
+      if (f.target) {
+        sum += Math.min(f.target, Number(entry[f.key]) || 0) / f.target;
+      } else {
+        sum += Number(entry[f.key]) > 0 ? 1 : 0;
+      }
+    }
+  }
+  return count ? sum / count : null;
+}
+
+function scoreColor(score) {
+  if (score === null || score === undefined) return "#E7EEE3";
+  if (score >= 0.85) return "#0E4B43";
+  if (score >= 0.6) return "#4C8C74";
+  if (score >= 0.35) return "#C89B3C";
+  if (score > 0) return "#C1666B";
+  return "#E7EEE3";
+}
+
+function fieldPercent(field, monthEntries, totalDays, member) {
+  if (!fieldApplies(field, member)) return null;
+  let hit = 0;
+  let daysCounted = totalDays;
+  if (field.type === "count") {
+    let sum = 0;
+    for (let d = 1; d <= totalDays; d++) {
+      const e = monthEntries[pad2(d)];
+      sum += Math.min(field.max, Number(e?.[field.key]) || 0);
+    }
+    return Math.round((sum / (totalDays * field.max)) * 100);
+  }
+  if (field.type === "number" && field.target) {
+    let sum = 0;
+    for (let d = 1; d <= totalDays; d++) {
+      const e = monthEntries[pad2(d)];
+      sum += Math.min(field.target, Number(e?.[field.key]) || 0);
+    }
+    return Math.round((sum / (totalDays * field.target)) * 100);
+  }
+  for (let d = 1; d <= totalDays; d++) {
+    const e = monthEntries[pad2(d)];
+    if (!e) continue;
+    if (field.type === "bool" && e[field.key]) hit += 1;
+    if (field.type === "number" && !field.target && Number(e[field.key]) > 0) hit += 1;
+    if (field.type === "time" && e[field.key]) hit += 1;
+  }
+  return Math.round((hit / daysCounted) * 100);
+}
+
+function weeklyKey(memberId, year, month0) {
+  return `weekly:${memberId}:${monthPrefix(year, month0)}`;
+}
+async function loadWeekly(memberId, year, month0) {
+  try {
+    const res = await appStorage.get(weeklyKey(memberId, year, month0), true);
+    return res ? JSON.parse(res.value) : {};
+  } catch { return {}; }
+}
+async function saveWeekly(memberId, year, month0, data) {
+  await appStorage.set(weeklyKey(memberId, year, month0), JSON.stringify(data), true);
+}
+async function loadMembers() {
+  try {
+    const res = await appStorage.get("members", true);
+    return res ? JSON.parse(res.value) : [];
+  } catch { return []; }
+}
+async function saveMembers(members) {
+  await appStorage.set("members", JSON.stringify(members), true);
+}
+async function loadEntry(memberId, key) {
+  try {
+    const res = await appStorage.get(`entry:${memberId}:${key}`, true);
+    return res ? JSON.parse(res.value) : null;
+  } catch { return null; }
+}
+async function saveEntry(memberId, key, data) {
+  await appStorage.set(`entry:${memberId}:${key}`, JSON.stringify(data), true);
+}
+async function loadMonthEntries(memberId, year, month0) {
+  const prefix = `entry:${memberId}:${monthPrefix(year, month0)}`;
+  try {
+    const res = await appStorage.list(prefix, true);
+    if (!res || !res.keys) return {};
+    const out = {};
+    await Promise.all(
+      res.keys.map(async (k) => {
+        try {
+          const r = await appStorage.get(k, true);
+          if (r) {
+            const day = k.split(":").pop();
+            out[day] = JSON.parse(r.value);
+          }
+        } catch {}
+      })
+    );
+    return out;
+  } catch { return {}; }
+}
+
+function StarMark({ size = 18, color = "#C89B3C" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M12 1L14.6 8.2L22 8.5L16.2 13.3L18.2 21L12 16.8L5.8 21L7.8 13.3L2 8.5L9.4 8.2L12 1Z" fill={color} />
+    </svg>
+  );
+}
+
+function BoolToggle({ value, onChange, disabled }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onChange(!value)}
+      className="flex items-center justify-center w-11 h-11 rounded-xl border-2 transition-all shrink-0"
+      style={{
+        borderColor: value ? "#0E4B43" : "#D8DED3",
+        background: value ? "#0E4B43" : "#FFFFFF",
+      }}
+    >
+      {value ? <Check size={20} color="#F4F7F1" /> : <X size={16} color="#B9C2B2" />}
+    </button>
+  );
+}
+
+function CountStepper({ value, onChange, max, disabled }) {
+  const v = Number(value) || 0;
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onChange(Math.max(0, v - 1))}
+        className="w-8 h-8 rounded-lg border flex items-center justify-center text-lg"
+        style={{ borderColor: "#D8DED3", color: "#16302B" }}
+      >
+        −
+      </button>
+      <span className="w-8 text-center font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}>
+        {toBn(v)}
+      </span>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onChange(Math.min(max, v + 1))}
+        className="w-8 h-8 rounded-lg border flex items-center justify-center text-lg"
+        style={{ borderColor: "#D8DED3", color: "#16302B" }}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function NumberField({ value, onChange, disabled, target }) {
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="number"
+        min="0"
+        inputMode="decimal"
+        disabled={disabled}
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="০"
+        className="w-16 h-9 rounded-lg border px-2 text-right outline-none"
+        style={{ borderColor: "#D8DED3", fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}
+      />
+      {target ? (
+        <span className="text-xs" style={{ color: "#8A9A8F", fontFamily: "'IBM Plex Mono', monospace" }}>
+          /{toBn(target)}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function TimeField({ value, onChange, disabled }) {
+  return (
+    <input
+      type="time"
+      disabled={disabled}
+      value={value || ""}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-28 h-9 rounded-lg border px-2 text-right outline-none"
+      style={{ borderColor: "#D8DED3", fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}
+    />
+  );
+}
+
+function App() {
+  useFonts();
+
+  const [members, setMembers] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [addingMember, setAddingMember] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newGender, setNewGender] = useState("male");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  const [viewDate, setViewDate] = useState(new Date());
+  const [entry, setEntry] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [savedTick, setSavedTick] = useState(false);
+  const [loadingEntry, setLoadingEntry] = useState(false);
+
+  const [monthCursor, setMonthCursor] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month0: d.getMonth() };
   });
+  const [monthEntries, setMonthEntries] = useState({});
+  const [loadingMonth, setLoadingMonth] = useState(false);
+  const [printMode, setPrintMode] = useState(false);
+
+  const [weekly, setWeekly] = useState({});
+  const [loadingWeekly, setLoadingWeekly] = useState(false);
+  const [savingWeekly, setSavingWeekly] = useState(false);
+  const [weeklySavedTick, setWeeklySavedTick] = useState(false);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error('Failed to save storage', e);
-    }
-  }, [data]);
+    (async () => {
+      const m = await loadMembers();
+      setMembers(m);
+      let last = null;
+      try {
+        const r = await appStorage.get("last-selected-member", false);
+        last = r ? JSON.parse(r.value) : null;
+      } catch {}
+      if (last && m.find((x) => x.id === last)) {
+        setSelectedId(last);
+      } else if (m.length) {
+        setSelectedId(m[0].id);
+      }
+    })();
+  }, []);
 
-  const year = currentDate.getFullYear();
-  const month0 = currentDate.getMonth();
-  const day = currentDate.getDate();
+  const selectedMember = useMemo(
+    () => (members || []).find((m) => m.id === selectedId) || null,
+    [members, selectedId]
+  );
 
-  const todayKey = formatDateKey(year, month0, day);
-
-  const toggleTask = (memberId, taskId) => {
-    setData((prev) => {
-      const dayData = prev[todayKey] || {};
-      const memberData = dayData[memberId] || {};
-      const updatedMemberData = {
-        ...memberData,
-        [taskId]: !memberData[taskId],
-      };
-
-      return {
-        ...prev,
-        [todayKey]: {
-          ...dayData,
-          [memberId]: updatedMemberData,
-        },
-      };
+  useEffect(() => {
+    if (!selectedId) return;
+    setLoadingEntry(true);
+    loadEntry(selectedId, dateKey(viewDate)).then((data) => {
+      setEntry(data || {});
+      setLoadingEntry(false);
     });
-  };
+  }, [selectedId, viewDate]);
+
+  const refreshMonth = useCallback(() => {
+    if (!selectedId) return;
+    setLoadingMonth(true);
+    loadMonthEntries(selectedId, monthCursor.year, monthCursor.month0).then((data) => {
+      setMonthEntries(data);
+      setLoadingMonth(false);
+    });
+  }, [selectedId, monthCursor]);
+
+  useEffect(() => {
+    refreshMonth();
+  }, [refreshMonth]);
+
+  const refreshWeekly = useCallback(() => {
+    if (!selectedId) return;
+    setLoadingWeekly(true);
+    loadWeekly(selectedId, monthCursor.year, monthCursor.month0).then((data) => {
+      setWeekly(data);
+      setLoadingWeekly(false);
+    });
+  }, [selectedId, monthCursor]);
+
+  useEffect(() => {
+    refreshWeekly();
+  }, [refreshWeekly]);
+
+  function updateWeekly(weekIdx, field, value) {
+    setWeekly((prev) => ({
+      ...prev,
+      [weekIdx]: { ...(prev[weekIdx] || {}), [field]: value },
+    }));
+  }
+
+  async function handleSaveWeekly() {
+    if (!selectedId) return;
+    setSavingWeekly(true);
+    await saveWeekly(selectedId, monthCursor.year, monthCursor.month0, weekly);
+    setSavingWeekly(false);
+    setWeeklySavedTick(true);
+    setTimeout(() => setWeeklySavedTick(false), 1600);
+  }
+
+  async function handleAddMember() {
+    const name = newName.trim();
+    if (!name) return;
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const next = [...(members || []), { id, name, gender: newGender }];
+    setMembers(next);
+    setSelectedId(id);
+    setNewName("");
+    setNewGender("male");
+    setAddingMember(false);
+    await saveMembers(next);
+    try {
+      await appStorage.set("last-selected-member", JSON.stringify(id), false);
+    } catch {}
+  }
+
+  async function handleDeleteMember(id) {
+    const next = (members || []).filter((m) => m.id !== id);
+    setMembers(next);
+    setConfirmDeleteId(null);
+    await saveMembers(next);
+    if (selectedId === id) {
+      const fallback = next.length ? next[0].id : null;
+      setSelectedId(fallback);
+      try {
+        if (fallback) {
+          await appStorage.set("last-selected-member", JSON.stringify(fallback), false);
+        } else {
+          await appStorage.delete("last-selected-member", false);
+        }
+      } catch {}
+    }
+  }
+
+  async function handleSelectMember(id) {
+    setSelectedId(id);
+    try {
+      await appStorage.set("last-selected-member", JSON.stringify(id), false);
+    } catch {}
+  }
+
+  function updateField(key, value) {
+    setEntry((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSave() {
+    if (!selectedId) return;
+    setSaving(true);
+    await saveEntry(selectedId, dateKey(viewDate), entry);
+    setSaving(false);
+    setSavedTick(true);
+    setTimeout(() => setSavedTick(false), 1600);
+    refreshMonth();
+  }
+
+  function changeDay(delta) {
+    const d = new Date(viewDate);
+    d.setDate(d.getDate() + delta);
+    setViewDate(d);
+  }
+
+  const isToday = dateKey(viewDate) === dateKey(new Date());
 
   const monthStats = useMemo(() => {
-    const days = getDaysInMonth(year, month0);
-    let totalCompleted = 0;
-    let totalPossible = days * TASKS.length;
-
-    const chartData = [];
-
-    for (let d = 1; d <= days; d++) {
-      const dateStr = formatDateKey(year, month0, d);
-      const dayData = data[dateStr]?.[selectedMember] || {};
-      
-      let completedCount = 0;
-      TASKS.forEach((t) => {
-        if (dayData[t.id]) completedCount++;
-      });
-
-      totalCompleted += completedCount;
-
-      chartData.push({
-        day: d,
-        completed: completedCount,
-      });
+    const total = daysInMonth(monthCursor.year, monthCursor.month0);
+    let filled = 0;
+    let scoreSum = 0;
+    for (let d = 1; d <= total; d++) {
+      const e = monthEntries[pad2(d)];
+      const s = dailyScore(e, selectedMember);
+      if (s !== null) {
+        filled += 1;
+        scoreSum += s;
+      }
     }
+    const avg = filled ? scoreSum / filled : 0;
+    return { total, filled, avgPct: Math.round(avg * 100) };
+  }, [monthEntries, monthCursor, selectedMember]);
 
-    const percentage = Math.round((totalCompleted / totalPossible) * 100) || 0;
+  if (members === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#F4F7F1" }}>
+        <Loader2 className="animate-spin" color="#0E4B43" size={28} />
+      </div>
+    );
+  }
 
-    return {
-      chartData,
-      totalCompleted,
-      percentage,
-    };
-  }, [data, year, month0, selectedMember]);
+  if (members.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}>
+        <div className="w-full max-w-sm text-center">
+          <div className="flex justify-center mb-3">
+            <StarMark size={34} />
+          </div>
+          <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>
+            Daily Task
+          </h1>
+          <p className="mb-6" style={{ color: "#4B5A50" }}>
+            শুরু করতে পরিবারের প্রথম সদস্যের নাম দিন
+          </p>
+          <div className="flex flex-col gap-3 items-center">
+            <div className="flex gap-2 w-full">
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddMember()}
+                placeholder="নাম লিখুন"
+                className="flex-1 h-12 rounded-xl border px-4 outline-none"
+                style={{ borderColor: "#D8DED3", background: "#fff" }}
+                autoFocus
+              />
+            </div>
+            <GenderToggle value={newGender} onChange={setNewGender} />
+            <button onClick={handleAddMember} className="h-12 px-5 rounded-xl font-semibold text-white w-full" style={{ background: "#0E4B43" }}>
+              যোগ করুন
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const handlePrevMonth = () => {
-    setCurrentDate(new Date(year, month0 - 1, 1));
-  };
+  if (printMode) {
+    const total = monthStats.total;
+    const rows = Array.from({ length: total }, (_, i) => i + 1);
+    return (
+      <div style={{ fontFamily: "'Noto Sans Bengali', sans-serif", color: "#111" }}>
+        <style>{`
+          @media print {
+            @page { size: A4 portrait; margin: 10mm; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+          table { border-collapse: collapse; width: 100%; }
+          th, td { border: 1px solid #999; padding: 3px 4px; font-size: 9px; text-align: center; }
+          th { background: #0E4B43; color: #fff; font-weight: 600; }
+        `}</style>
+        <div className="p-4 max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-2 no-print">
+            <button onClick={() => setPrintMode(false)} className="px-4 py-2 rounded-lg border font-semibold" style={{ borderColor: "#D8DED3" }}>
+              ← ফিরে যান
+            </button>
+            <button onClick={() => window.print()} className="px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}>
+              <Printer size={16} /> প্রিন্ট / PDF ডাউনলোড
+            </button>
+          </div>
+          <h1 style={{ fontFamily: "'Noto Serif Bengali', serif", fontSize: 20, fontWeight: 700, textAlign: "center" }}>
+            Daily Task — {BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}
+          </h1>
+          <p style={{ textAlign: "center", marginBottom: 8 }}>
+            নাম: {selectedMember?.name} &nbsp;|&nbsp; পূরণ করা দিন: {toBn(monthStats.filled)}/{toBn(total)}
+            &nbsp;|&nbsp; গড় স্কোর: {toBn(monthStats.avgPct)}%
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>তাং</th>
+                {ALL_FIELDS.map((f) => (
+                  <th key={f.key}>{f.label.split("(")[0].trim()}</th>
+                ))}
+                <th>স্কোর</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((d) => {
+                const e = monthEntries[pad2(d)];
+                const s = dailyScore(e, selectedMember);
+                return (
+                  <tr key={d}>
+                    <td style={{ fontWeight: 700 }}>{toBn(d)}</td>
+                    {ALL_FIELDS.map((f) => {
+                      if (!fieldApplies(f, selectedMember)) return <td key={f.key} style={{ color: "#bbb" }}>—</td>;
+                      if (!e) return <td key={f.key}></td>;
+                      const v = e[f.key];
+                      let disp = "";
+                      if (f.type === "bool") disp = v ? "✓" : "";
+                      else disp = v !== undefined && v !== "" ? toBn(v) : "";
+                      return <td key={f.key}>{disp}</td>;
+                    })}
+                    <td style={{ fontWeight: 700 }}>{s === null ? "" : toBn(Math.round(s * 100)) + "%"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: "#EFE6CC", fontWeight: 700 }}>
+                <td>শতকরা</td>
+                {ALL_FIELDS.map((f) => {
+                  const pct = fieldPercent(f, monthEntries, total, selectedMember);
+                  return <td key={f.key}>{pct === null ? "—" : toBn(pct) + "%"}</td>;
+                })}
+                <td>{toBn(monthStats.avgPct)}%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    );
+  }
 
-  const handleNextMonth = () => {
-    setCurrentDate(new Date(year, month0 + 1, 1));
-  };
-
-  const monthNames = [
-    'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
-    'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
-  ];
+  const total = monthStats.total;
+  const firstOfMonth = new Date(monthCursor.year, monthCursor.month0, 1);
+  const leadBlanks = firstOfMonth.getDay();
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 p-4 md:p-8 font-sans">
-      <div className="max-w-3xl mx-auto space-y-6">
-        
-        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div>
-            <h1 className="text-2xl font-bold text-emerald-600 flex items-center gap-2">
-              <CheckCircle className="w-7 h-7" /> ইবাদাত ট্র্যাকার
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              দৈনন্দিন আমল ও ইবাদতের হিসাব রাখুন
-            </p>
-          </div>
+    <div className="min-h-screen pb-16" style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}>
+      {/* Header */}
+      <div style={{ background: "#0E4B43" }} className="px-5 pt-6 pb-8 relative overflow-hidden">
+        <div className="absolute -right-6 -top-6 opacity-10">
+          <StarMark size={140} color="#F4F7F1" />
+        </div>
+        <div className="relative flex items-center gap-2 mb-1">
+          <StarMark size={20} />
+          <h1 className="text-xl font-bold" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#F4F7F1" }}>
+            Daily Task
+          </h1>
+        </div>
+        <p className="relative text-sm" style={{ color: "#C7D6CD" }}>
+          দ্বীন ও দুনিয়ার ব্যালেন্স ট্র্যাকার
+        </p>
 
-          <div className="flex bg-slate-100 p-1 rounded-xl">
-            {MEMBERS.map((m) => (
+        {/* Member selector */}
+        <div className="relative flex gap-2 mt-5 flex-wrap">
+          {members.map((m) =>
+            confirmDeleteId === m.id ? (
+              <div key={m.id} className="px-2.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5" style={{ background: "rgba(255,255,255,0.12)", color: "#F4F7F1" }}>
+                <span>{m.name} মুছবেন?</span>
+                <button onClick={() => handleDeleteMember(m.id)} className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "#C1666B" }}>
+                  <Check size={13} color="#fff" />
+                </button>
+                <button onClick={() => setConfirmDeleteId(null)} className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.2)" }}>
+                  <X size={13} color="#fff" />
+                </button>
+              </div>
+            ) : (
               <button
                 key={m.id}
-                onClick={() => setSelectedMember(m.id)}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-                  selectedMember === m.id
-                    ? 'bg-white text-emerald-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                onClick={() => handleSelectMember(m.id)}
+                className="pl-3 pr-1.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5 transition-all"
+                style={{
+                  background: m.id === selectedId ? "#C89B3C" : "rgba(255,255,255,0.12)",
+                  color: m.id === selectedId ? "#16302B" : "#F4F7F1",
+                }}
               >
-                <User className="w-4 h-4" />
-                {m.name}
-              </button>
-            ))}
-          </div>
-        </header>
-
-        <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-          <button
-            onClick={handlePrevMonth}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-          >
-            <ChevronLeft className="w-5 h-5 text-slate-600" />
-          </button>
-          <div className="flex items-center gap-2 font-semibold text-lg text-slate-700">
-            <Calendar className="w-5 h-5 text-emerald-600" />
-            {monthNames[month0]} {year}
-          </div>
-          <button
-            onClick={handleNextMonth}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-          >
-            <ChevronRight className="w-5 h-5 text-slate-600" />
-          </button>
-        </div>
-
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <Flame className="w-5 h-5 text-amber-500" /> আজকের আমল ({day} {monthNames[month0]})
-          </h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {TASKS.map((task) => {
-              const isChecked = !!data[todayKey]?.[selectedMember]?.[task.id];
-              return (
-                <button
-                  key={task.id}
-                  onClick={() => toggleTask(selectedMember, task.id)}
-                  className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${
-                    isChecked
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
+                <User size={13} /> {m.name}
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmDeleteId(m.id);
+                  }}
+                  className="w-5 h-5 rounded-full flex items-center justify-center ml-0.5"
+                  style={{ background: "rgba(0,0,0,0.12)" }}
                 >
-                  <span className="font-medium">{task.label}</span>
-                  <div
-                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                      isChecked
-                        ? 'bg-emerald-600 border-emerald-600 text-white'
-                        : 'border-slate-300'
-                    }`}
-                  >
-                    {isChecked && <CheckCircle className="w-4 h-4" />}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-amber-500" /> মাসিক অগ্রগতি
-            </h2>
-            <span className="text-2xl font-bold text-emerald-600">
-              {monthStats.percentage}%
-            </span>
-          </div>
-
-          <div className="h-48 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthStats.chartData}>
-                <XAxis dataKey="day" stroke="#94a3b8" fontSize={12} />
-                <YAxis domain={[0, TASKS.length]} stroke="#94a3b8" fontSize={12} />
-                <Tooltip
-                  formatter={(value) => [`${value}/${TASKS.length} টি`, 'সম্পন্ন']}
-                  labelFormatter={(label) => `তারিখ: ${label} ${monthNames[month0]}`}
+                  <X size={11} color={m.id === selectedId ? "#16302B" : "#F4F7F1"} />
+                </span>
+              </button>
+            )
+          )}
+          {!addingMember ? (
+            <button onClick={() => setAddingMember(true)} className="px-3 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1" style={{ background: "rgba(255,255,255,0.12)", color: "#F4F7F1" }}>
+              <Plus size={14} /> সদস্য
+            </button>
+          ) : (
+            <div className="flex flex-col gap-1.5 p-2 rounded-2xl" style={{ background: "rgba(255,255,255,0.12)" }}>
+              <div className="flex gap-1">
+                <input
+                  autoFocus
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddMember()}
+                  placeholder="নাম"
+                  className="w-24 px-2 rounded-full text-sm outline-none"
+                  style={{ border: "none" }}
                 />
-                <Bar dataKey="completed" radius={[4, 4, 0, 0]}>
-                  {monthStats.chartData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.completed === TASKS.length ? '#10b981' : '#a7f3d0'}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                <button onClick={handleAddMember} className="px-3 rounded-full text-sm font-semibold" style={{ background: "#C89B3C", color: "#16302B" }}>
+                  ঠিক আছে
+                </button>
+              </div>
+              <GenderToggle value={newGender} onChange={setNewGender} light />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Date nav */}
+      <div className="px-5 -mt-4">
+        <div className="bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center justify-between" style={{ border: "1px solid #E7EEE3" }}>
+          <button onClick={() => changeDay(-1)} className="w-9 h-9 flex items-center justify-center rounded-full" style={{ background: "#F4F7F1" }}>
+            <ChevronLeft size={18} color="#0E4B43" />
+          </button>
+          <div className="text-center">
+            <div className="font-semibold" style={{ color: "#16302B" }}>
+              {isToday ? "আজ" : BN_WEEKDAYS[viewDate.getDay()]} · {toBn(viewDate.getDate())} {BN_MONTHS[viewDate.getMonth()]} {toBn(viewDate.getFullYear())}
+            </div>
+          </div>
+          <button onClick={() => changeDay(1)} className="w-9 h-9 flex items-center justify-center rounded-full" style={{ background: "#F4F7F1" }}>
+            <ChevronRight size={18} color="#0E4B43" />
+          </button>
+        </div>
+      </div>
+
+      {/* Entry form */}
+      <div className="px-5 mt-5 space-y-4">
+        {loadingEntry ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="animate-spin" color="#0E4B43" size={22} />
+          </div>
+        ) : (
+          <>
+            <FieldGroup title="দ্বীন" fields={DEEN_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
+            <FieldGroup title="দুনিয়া" fields={DUNIYA_FIELDS} entry={entry} onChange={updateField} member={selectedMember} />
+
+            <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
+              <label className="block text-sm font-semibold mb-2" style={{ color: "#16302B" }}>
+                দিনের নোট / আত্ম-সমালোচনা
+              </label>
+              <textarea
+                value={entry.note || ""}
+                onChange={(e) => updateField("note", e.target.value)}
+                rows={3}
+                placeholder="আজকের অনুভূতি বা শিক্ষা লিখুন..."
+                className="w-full rounded-xl border p-3 outline-none resize-none"
+                style={{ borderColor: "#D8DED3" }}
+              />
+            </div>
+
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full h-12 rounded-xl font-bold text-white flex items-center justify-center gap-2"
+              style={{ background: savedTick ? "#4C8C74" : "#0E4B43" }}
+            >
+              {saving ? <Loader2 className="animate-spin" size={18} /> : savedTick ? <Check size={18} /> : null}
+              {savedTick ? "সেভ হয়েছে" : "সেভ করুন"}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Monthly overview */}
+      <div className="px-5 mt-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-bold flex items-center gap-1.5" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>
+            <CalIcon size={16} /> মাসিক ওভারভিউ
+          </h2>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setMonthCursor((c) => (c.month0 === 0 ? { year: c.year - 1, month0: 11 } : { year: c.year, month0: c.month0 - 1 }))}
+              className="w-7 h-7 flex items-center justify-center rounded-full bg-white"
+              style={{ border: "1px solid #E7EEE3" }}
+            >
+              <ChevronLeft size={14} color="#0E4B43" />
+            </button>
+            <span className="text-sm font-semibold px-1" style={{ color: "#16302B" }}>
+              {BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}
+            </span>
+            <button
+              onClick={() => setMonthCursor((c) => (c.month0 === 11 ? { year: c.year + 1, month0: 0 } : { year: c.year, month0: c.month0 + 1 }))}
+              className="w-7 h-7 flex items-center justify-center rounded-full bg-white"
+              style={{ border: "1px solid #E7EEE3" }}
+            >
+              <ChevronRight size={14} color="#0E4B43" />
+            </button>
           </div>
         </div>
 
+        <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
+          <div className="flex items-center justify-between mb-4">
+            <Stat label="গড় স্কোর" value={`${toBn(monthStats.avgPct)}%`} />
+            <Stat label="পূরণ করা দিন" value={`${toBn(monthStats.filled)}/${toBn(total)}`} />
+            <button
+              onClick={() => setPrintMode(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold"
+              style={{ background: "#F4F7F1", color: "#0E4B43", border: "1px solid #E7EEE3" }}
+            >
+              <Printer size={14} /> PDF
+            </button>
+          </div>
+
+          {loadingMonth ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="animate-spin" color="#0E4B43" size={18} />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-7 gap-1.5 mb-1">
+                {BN_WEEKDAYS.map((w) => (
+                  <div key={w} className="text-center text-[10px] font-semibold" style={{ color: "#8A9A8F" }}>
+                    {w}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1.5">
+                {Array.from({ length: leadBlanks }).map((_, i) => (
+                  <div key={"b" + i} />
+                ))}
+                {Array.from({ length: total }, (_, i) => i + 1).map((d) => {
+                  const e = monthEntries[pad2(d)];
+                  const s = dailyScore(e, selectedMember);
+                  const isSel = pad2(d) === pad2(viewDate.getDate()) && monthCursor.year === viewDate.getFullYear() && monthCursor.month0 === viewDate.getMonth();
+                  return (
+                    <button
+                      key={d}
+                      onClick={() => setViewDate(new Date(monthCursor.year, monthCursor.month0, d))}
+                      className="aspect-square rounded-lg flex items-center justify-center text-[11px] font-semibold relative"
+                      style={{
+                        background: scoreColor(s),
+                        color: s !== null && s >= 0.35 ? "#F4F7F1" : "#5A6A5F",
+                        outline: isSel ? "2px solid #16302B" : "none",
+                        outlineOffset: 1,
+                      }}
+                    >
+                      {toBn(d)}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Weekly reflection */}
+      <div className="px-5 mt-8">
+        <h2 className="font-bold mb-3" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>
+          সাপ্তাহিক রিফ্লেকশন
+        </h2>
+        <div className="space-y-3">
+          {loadingWeekly ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="animate-spin" color="#0E4B43" size={18} />
+            </div>
+          ) : (
+            [1, 2, 3, 4, 5].map((w) => (
+              <div key={w} className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
+                <div className="text-sm font-bold mb-2" style={{ color: "#0E4B43" }}>
+                  সপ্তাহ {toBn(w)}
+                </div>
+                <div className="space-y-2">
+                  <textarea
+                    value={weekly[w]?.good || ""}
+                    onChange={(e) => updateWeekly(w, "good", e.target.value)}
+                    placeholder="এই সপ্তাহে যা ভালো হয়েছে"
+                    rows={2}
+                    className="w-full rounded-lg border p-2 text-sm outline-none resize-none"
+                    style={{ borderColor: "#D8DED3" }}
+                  />
+                  <textarea
+                    value={weekly[w]?.gap || ""}
+                    onChange={(e) => updateWeekly(w, "gap", e.target.value)}
+                    placeholder="কোথায় ঘাটতি ছিল"
+                    rows={2}
+                    className="w-full rounded-lg border p-2 text-sm outline-none resize-none"
+                    style={{ borderColor: "#D8DED3" }}
+                  />
+                  <textarea
+                    value={weekly[w]?.plan || ""}
+                    onChange={(e) => updateWeekly(w, "plan", e.target.value)}
+                    placeholder="আগামী সপ্তাহে উন্নতির পরিকল্পনা"
+                    rows={2}
+                    className="w-full rounded-lg border p-2 text-sm outline-none resize-none"
+                    style={{ borderColor: "#D8DED3" }}
+                  />
+                </div>
+              </div>
+            ))
+          )}
+          <button
+            onClick={handleSaveWeekly}
+            disabled={savingWeekly}
+            className="w-full h-11 rounded-xl font-bold text-white flex items-center justify-center gap-2"
+            style={{ background: weeklySavedTick ? "#4C8C74" : "#0E4B43" }}
+          >
+            {savingWeekly ? <Loader2 className="animate-spin" size={16} /> : weeklySavedTick ? <Check size={16} /> : null}
+            {weeklySavedTick ? "সেভ হয়েছে" : "রিফ্লেকশন সেভ করুন"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
+
+function GenderToggle({ value, onChange, light }) {
+  const base = light
+    ? { off: "rgba(255,255,255,0.12)", offText: "#F4F7F1", on: "#C89B3C", onText: "#16302B" }
+    : { off: "#F4F7F1", offText: "#4B5A50", on: "#0E4B43", onText: "#fff" };
+  return (
+    <div className="flex rounded-xl overflow-hidden" style={{ border: `1px solid ${light ? "rgba(255,255,255,0.2)" : "#D8DED3"}` }}>
+      {[
+        { key: "male", label: "পুরুষ" },
+        { key: "female", label: "মহিলা" },
+      ].map((g) => (
+        <button
+          key={g.key}
+          type="button"
+          onClick={() => onChange(g.key)}
+          className="px-3 h-9 text-sm font-semibold"
+          style={{
+            background: value === g.key ? base.on : base.off,
+            color: value === g.key ? base.onText : base.offText,
+          }}
+        >
+          {g.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Stat({ label, value }) {
+  return (
+    <div>
+      <div className="text-[11px]" style={{ color: "#8A9A8F" }}>
+        {label}
+      </div>
+      <div className="text-lg font-bold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function FieldGroup({ title, fields, entry, onChange, member }) {
+  const visibleFields = fields.filter((f) => fieldApplies(f, member));
+  if (!visibleFields.length) return null;
+  return (
+    <div className="bg-white rounded-2xl p-4" style={{ border: "1px solid #E7EEE3" }}>
+      <h3 className="text-sm font-bold mb-3 tracking-wide" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#0E4B43" }}>
+        {title}
+      </h3>
+      <div className="space-y-3">
+        {visibleFields.map((f) => (
+          <div key={f.key} className="flex items-center justify-between gap-3">
+            <span className="text-sm" style={{ color: "#33443A" }}>
+              {f.label}
+            </span>
+            {f.type === "bool" && (
+              <BoolToggle value={!!entry[f.key]} onChange={(v) => onChange(f.key, v)} />
+            )}
+            {f.type === "count" && (
+              <CountStepper value={entry[f.key]} max={f.max} onChange={(v) => onChange(f.key, v)} />
+            )}
+            {f.type === "number" && (
+              <NumberField value={entry[f.key]} target={f.target} onChange={(v) => onChange(f.key, v)} />
+            )}
+            {f.type === "time" && (
+              <TimeField value={entry[f.key]} onChange={(v) => onChange(f.key, v)} />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const container = document.getElementById("root");
+const root = ReactDOM.createRoot(container);
+root.render(<App />);
+</script>
+</body>
+</html>
