@@ -9,15 +9,15 @@
 <link rel="icon" href="icon-192.png" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 
-<!-- Tailwind (utility classes used throughout the UI) -->
+<!-- Tailwind CSS -->
 <script src="https://cdn.tailwindcss.com"></script>
 
-<!-- React + Babel (so JSX runs directly in the browser, no build step) -->
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<!-- React 18 + Babel -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-<!-- Firebase (compat build — simplest for plain <script> tag usage) -->
+<!-- Firebase compat libraries -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
@@ -29,7 +29,7 @@
 <div id="root"></div>
 
 <script>
-  // ---------- Firebase setup ----------
+  // Firebase Setup
   const firebaseConfig = {
     apiKey: "AIzaSyCqvGSmjEY6PRnsdGh016Ta1m8PLjolqgA",
     authDomain: "daily-task-family.firebaseapp.com",
@@ -43,9 +43,7 @@
   db.enablePersistence().catch(() => {});
   const FAMILY_COLLECTION = "daily_task_data";
 
-  // ---------- appStorage shim: same shape as window.storage in Claude artifacts ----------
-  // shared = true  -> synced across the whole family via Firestore
-  // shared = false -> stays on this device only, via localStorage
+  // appStorage Shim
   const appStorage = {
     async get(key, shared) {
       if (!shared) {
@@ -86,10 +84,9 @@
       const snap = await q.get();
       const keys = snap.docs.map((d) => d.id);
       return { keys, prefix, shared };
-    },
+    ,
   };
 
-  // ---------- Service worker (offline caching) ----------
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -97,10 +94,9 @@
   }
 </script>
 
-<script type="text/babel" data-presets="react">
+<script type="text/babel" data-presets="react,env">
 const { useState, useEffect, useCallback, useMemo } = React;
 
-// ---------- Minimal icon set (replaces lucide-react, no extra dependency needed) ----------
 function Icon({ children, size = 18, color = "currentColor", className, style }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
@@ -145,7 +141,6 @@ function Loader2({ size, color, className }) {
   );
 }
 
-// ---------- Font injection ----------
 function useFonts() {
   useEffect(() => {
     const id = "dt-fonts";
@@ -159,7 +154,6 @@ function useFonts() {
   }, []);
 }
 
-// ---------- Field schema ----------
 const DEEN_FIELDS = [
   { key: "fardPrayers", label: "ফরজ কাযা নামাজ (কয়টি?)", type: "count", max: 5 },
   { key: "jamaat", label: "জামাতে নামাজ (কয় ওয়াক্ত?)", type: "count", max: 5, appliesTo: "male" },
@@ -186,14 +180,11 @@ const DUNIYA_FIELDS = [
 ];
 
 const ALL_FIELDS = [...DEEN_FIELDS, ...DUNIYA_FIELDS];
-// fields that count toward the daily % score (info-only fields excluded)
 const SCORED_FIELDS = ALL_FIELDS.filter((f) => !f.info);
 
-// some fields (e.g. জামাতে নামাজ) only apply to one gender — skip them entirely
-// for members they don't apply to, rather than counting a zero against them
 function fieldApplies(field, member) {
   if (!field.appliesTo) return true;
-  if (!member || !member.gender) return true; // unknown gender: don't penalize, just show it
+  if (!member || !member.gender) return true;
   return field.appliesTo === member.gender;
 }
 
@@ -206,20 +197,11 @@ const BN_MONTHS = [
 ];
 const BN_WEEKDAYS = ["রবি", "সোম", "মঙ্গল", "বুধ", "বৃহ", "শুক্র", "শনি"];
 
-function pad2(n) {
-  return String(n).padStart(2, "0");
-}
-function dateKey(d) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-function monthPrefix(year, month0) {
-  return `${year}-${pad2(month0 + 1)}`;
-}
-function daysInMonth(year, month0) {
-  return new Date(year, month0 + 1, 0).getDate();
-}
+function pad2(n) { return String(n).padStart(2, "0"); }
+function dateKey(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function monthPrefix(year, month0) { return `${year}-${pad2(month0 + 1)}`; }
+function daysInMonth(year, month0) { return new Date(year, month0 + 1, 0).getDate(); }
 
-// daily score 0..1 across scored fields that apply to this member
 function dailyScore(entry, member) {
   if (!entry) return null;
   let sum = 0;
@@ -233,7 +215,6 @@ function dailyScore(entry, member) {
       sum += Math.min(f.max, Number(entry[f.key]) || 0) / f.max;
     } else if (f.type === "number") {
       if (f.target) {
-        // partial credit up to the daily target (e.g. quranPages target: 5)
         sum += Math.min(f.target, Number(entry[f.key]) || 0) / f.target;
       } else {
         sum += Number(entry[f.key]) > 0 ? 1 : 0;
@@ -252,9 +233,8 @@ function scoreColor(score) {
   return "#E7EEE3";
 }
 
-// subject-wise monthly percentage (mirrors the spreadsheet's "শতকরা" row logic)
 function fieldPercent(field, monthEntries, totalDays, member) {
-  if (!fieldApplies(field, member)) return null; // N/A for this member
+  if (!fieldApplies(field, member)) return null;
   let hit = 0;
   let daysCounted = totalDays;
   if (field.type === "count") {
@@ -283,7 +263,6 @@ function fieldPercent(field, monthEntries, totalDays, member) {
   return Math.round((hit / daysCounted) * 100);
 }
 
-// ---------- Weekly reflection storage ----------
 function weeklyKey(memberId, year, month0) {
   return `weekly:${memberId}:${monthPrefix(year, month0)}`;
 }
@@ -291,9 +270,7 @@ async function loadWeekly(memberId, year, month0) {
   try {
     const res = await appStorage.get(weeklyKey(memberId, year, month0), true);
     return res ? JSON.parse(res.value) : {};
-  } catch {
-    return {};
-  }
+  } catch { return {}; }
 }
 async function saveWeekly(memberId, year, month0, data) {
   await appStorage.set(weeklyKey(memberId, year, month0), JSON.stringify(data), true);
@@ -302,9 +279,7 @@ async function loadMembers() {
   try {
     const res = await appStorage.get("members", true);
     return res ? JSON.parse(res.value) : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 async function saveMembers(members) {
   await appStorage.set("members", JSON.stringify(members), true);
@@ -313,9 +288,7 @@ async function loadEntry(memberId, key) {
   try {
     const res = await appStorage.get(`entry:${memberId}:${key}`, true);
     return res ? JSON.parse(res.value) : null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 async function saveEntry(memberId, key, data) {
   await appStorage.set(`entry:${memberId}:${key}`, JSON.stringify(data), true);
@@ -338,19 +311,13 @@ async function loadMonthEntries(memberId, year, month0) {
       })
     );
     return out;
-  } catch {
-    return {};
-  }
+  } catch { return {}; }
 }
 
-// ---------- Small UI atoms ----------
 function StarMark({ size = 18, color = "#C89B3C" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path
-        d="M12 1L14.6 8.2L22 8.5L16.2 13.3L18.2 21L12 16.8L5.8 21L7.8 13.3L2 8.5L9.4 8.2L12 1Z"
-        fill={color}
-      />
+      <path d="M12 1L14.6 8.2L22 8.5L16.2 13.3L18.2 21L12 16.8L5.8 21L7.8 13.3L2 8.5L9.4 8.2L12 1Z" fill={color} />
     </svg>
   );
 }
@@ -366,7 +333,6 @@ function BoolToggle({ value, onChange, disabled }) {
         borderColor: value ? "#0E4B43" : "#D8DED3",
         background: value ? "#0E4B43" : "#FFFFFF",
       }}
-      aria-pressed={value}
     >
       {value ? <Check size={20} color="#F4F7F1" /> : <X size={16} color="#B9C2B2" />}
     </button>
@@ -386,10 +352,7 @@ function CountStepper({ value, onChange, max, disabled }) {
       >
         −
       </button>
-      <span
-        className="w-8 text-center font-semibold"
-        style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}
-      >
+      <span className="w-8 text-center font-semibold" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#16302B" }}>
         {toBn(v)}
       </span>
       <button
@@ -441,11 +404,10 @@ function TimeField({ value, onChange, disabled }) {
   );
 }
 
-// ---------- Main App ----------
 function App() {
   useFonts();
 
-  const [members, setMembers] = useState(null); // null = loading
+  const [members, setMembers] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [addingMember, setAddingMember] = useState(false);
   const [newName, setNewName] = useState("");
@@ -471,7 +433,6 @@ function App() {
   const [savingWeekly, setSavingWeekly] = useState(false);
   const [weeklySavedTick, setWeeklySavedTick] = useState(false);
 
-  // ---- load members + last-selected (personal, per device) ----
   useEffect(() => {
     (async () => {
       const m = await loadMembers();
@@ -494,7 +455,6 @@ function App() {
     [members, selectedId]
   );
 
-  // ---- load today's entry when member/date changes ----
   useEffect(() => {
     if (!selectedId) return;
     setLoadingEntry(true);
@@ -504,7 +464,6 @@ function App() {
     });
   }, [selectedId, viewDate]);
 
-  // ---- load month entries for heatmap ----
   const refreshMonth = useCallback(() => {
     if (!selectedId) return;
     setLoadingMonth(true);
@@ -610,7 +569,6 @@ function App() {
 
   const isToday = dateKey(viewDate) === dateKey(new Date());
 
-  // ---- monthly stats ----
   const monthStats = useMemo(() => {
     const total = daysInMonth(monthCursor.year, monthCursor.month0);
     let filled = 0;
@@ -627,7 +585,6 @@ function App() {
     return { total, filled, avgPct: Math.round(avg * 100) };
   }, [monthEntries, monthCursor, selectedMember]);
 
-  // ===================== LOADING =====================
   if (members === null) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "#F4F7F1" }}>
@@ -636,21 +593,14 @@ function App() {
     );
   }
 
-  // ===================== NO MEMBERS YET =====================
   if (members.length === 0) {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center px-6"
-        style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}
-      >
+      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}>
         <div className="w-full max-w-sm text-center">
           <div className="flex justify-center mb-3">
             <StarMark size={34} />
           </div>
-          <h1
-            className="text-2xl font-bold mb-2"
-            style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}
-          >
+          <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#16302B" }}>
             Daily Task
           </h1>
           <p className="mb-6" style={{ color: "#4B5A50" }}>
@@ -669,11 +619,7 @@ function App() {
               />
             </div>
             <GenderToggle value={newGender} onChange={setNewGender} />
-            <button
-              onClick={handleAddMember}
-              className="h-12 px-5 rounded-xl font-semibold text-white w-full"
-              style={{ background: "#0E4B43" }}
-            >
+            <button onClick={handleAddMember} className="h-12 px-5 rounded-xl font-semibold text-white w-full" style={{ background: "#0E4B43" }}>
               যোগ করুন
             </button>
           </div>
@@ -682,7 +628,6 @@ function App() {
     );
   }
 
-  // ===================== PRINT VIEW =====================
   if (printMode) {
     const total = monthStats.total;
     const rows = Array.from({ length: total }, (_, i) => i + 1);
@@ -698,19 +643,11 @@ function App() {
           th { background: #0E4B43; color: #fff; font-weight: 600; }
         `}</style>
         <div className="p-4 max-w-4xl mx-auto">
-          <div className="flex items-center justify-between mb-2 no-print" style={{ printColorAdjust: "exact" }}>
-            <button
-              onClick={() => setPrintMode(false)}
-              className="px-4 py-2 rounded-lg border font-semibold"
-              style={{ borderColor: "#D8DED3" }}
-            >
+          <div className="flex items-center justify-between mb-2 no-print">
+            <button onClick={() => setPrintMode(false)} className="px-4 py-2 rounded-lg border font-semibold" style={{ borderColor: "#D8DED3" }}>
               ← ফিরে যান
             </button>
-            <button
-              onClick={() => window.print()}
-              className="px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2"
-              style={{ background: "#0E4B43" }}
-            >
+            <button onClick={() => window.print()} className="px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2" style={{ background: "#0E4B43" }}>
               <Printer size={16} /> প্রিন্ট / PDF ডাউনলোড
             </button>
           </div>
@@ -743,7 +680,7 @@ function App() {
                       if (!e) return <td key={f.key}></td>;
                       const v = e[f.key];
                       let disp = "";
-                      if (f.type === "bool") disp = v ? "✓" : v === false ? "" : "";
+                      if (f.type === "bool") disp = v ? "✓" : "";
                       else disp = v !== undefined && v !== "" ? toBn(v) : "";
                       return <td key={f.key}>{disp}</td>;
                     })}
@@ -763,19 +700,14 @@ function App() {
               </tr>
             </tfoot>
           </table>
-          <p style={{ marginTop: 10, fontSize: 10, color: "#555" }}>
-            স্কোর হিসাব: ফরজ ও জামাত নামাজ ৫ ওয়াক্তের অনুপাতে, কুরআন/তাফসীর পড়া হয়েছে কিনা তার ভিত্তিতে, আর বাকি সবগুলো আইটেমের গড় মিলিয়ে দৈনিক স্কোর।
-          </p>
         </div>
-        <style>{`@media print { .no-print { display: none !important; } }`}</style>
       </div>
     );
   }
 
-  // ===================== MAIN VIEW =====================
   const total = monthStats.total;
   const firstOfMonth = new Date(monthCursor.year, monthCursor.month0, 1);
-  const leadBlanks = firstOfMonth.getDay(); // 0 = Sunday
+  const leadBlanks = firstOfMonth.getDay();
 
   return (
     <div className="min-h-screen pb-16" style={{ background: "#F4F7F1", fontFamily: "'Noto Sans Bengali', sans-serif" }}>
@@ -786,10 +718,7 @@ function App() {
         </div>
         <div className="relative flex items-center gap-2 mb-1">
           <StarMark size={20} />
-          <h1
-            className="text-xl font-bold"
-            style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#F4F7F1" }}
-          >
+          <h1 className="text-xl font-bold" style={{ fontFamily: "'Noto Serif Bengali', serif", color: "#F4F7F1" }}>
             Daily Task
           </h1>
         </div>
@@ -801,16 +730,12 @@ function App() {
         <div className="relative flex gap-2 mt-5 flex-wrap">
           {members.map((m) =>
             confirmDeleteId === m.id ? (
-              <div
-                key={m.id}
-                className="px-2.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5"
-                style={{ background: "rgba(255,255,255,0.12)", color: "#F4F7F1" }}
-              >
+              <div key={m.id} className="px-2.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5" style={{ background: "rgba(255,255,255,0.12)", color: "#F4F7F1" }}>
                 <span>{m.name} মুছবেন?</span>
-                <button onClick={() => handleDeleteMember(m.id)} aria-label="নিশ্চিত করুন" className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "#C1666B" }}>
+                <button onClick={() => handleDeleteMember(m.id)} className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "#C1666B" }}>
                   <Check size={13} color="#fff" />
                 </button>
-                <button onClick={() => setConfirmDeleteId(null)} aria-label="বাতিল" className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.2)" }}>
+                <button onClick={() => setConfirmDeleteId(null)} className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.2)" }}>
                   <X size={13} color="#fff" />
                 </button>
               </div>
@@ -818,7 +743,6 @@ function App() {
               <button
                 key={m.id}
                 onClick={() => handleSelectMember(m.id)}
-                onDoubleClick={() => setConfirmDeleteId(m.id)}
                 className="pl-3 pr-1.5 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1.5 transition-all"
                 style={{
                   background: m.id === selectedId ? "#C89B3C" : "rgba(255,255,255,0.12)",
@@ -827,8 +751,6 @@ function App() {
               >
                 <User size={13} /> {m.name}
                 <span
-                  role="button"
-                  aria-label="সদস্য মুছুন"
                   onClick={(e) => {
                     e.stopPropagation();
                     setConfirmDeleteId(m.id);
@@ -842,11 +764,7 @@ function App() {
             )
           )}
           {!addingMember ? (
-            <button
-              onClick={() => setAddingMember(true)}
-              className="px-3 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1"
-              style={{ background: "rgba(255,255,255,0.12)", color: "#F4F7F1" }}
-            >
+            <button onClick={() => setAddingMember(true)} className="px-3 py-1.5 rounded-full text-sm font-semibold flex items-center gap-1" style={{ background: "rgba(255,255,255,0.12)", color: "#F4F7F1" }}>
               <Plus size={14} /> সদস্য
             </button>
           ) : (
@@ -861,11 +779,7 @@ function App() {
                   className="w-24 px-2 rounded-full text-sm outline-none"
                   style={{ border: "none" }}
                 />
-                <button
-                  onClick={handleAddMember}
-                  className="px-3 rounded-full text-sm font-semibold"
-                  style={{ background: "#C89B3C", color: "#16302B" }}
-                >
+                <button onClick={handleAddMember} className="px-3 rounded-full text-sm font-semibold" style={{ background: "#C89B3C", color: "#16302B" }}>
                   ঠিক আছে
                 </button>
               </div>
@@ -938,9 +852,7 @@ function App() {
           </h2>
           <div className="flex items-center gap-1">
             <button
-              onClick={() =>
-                setMonthCursor((c) => (c.month0 === 0 ? { year: c.year - 1, month0: 11 } : { year: c.year, month0: c.month0 - 1 }))
-              }
+              onClick={() => setMonthCursor((c) => (c.month0 === 0 ? { year: c.year - 1, month0: 11 } : { year: c.year, month0: c.month0 - 1 }))}
               className="w-7 h-7 flex items-center justify-center rounded-full bg-white"
               style={{ border: "1px solid #E7EEE3" }}
             >
@@ -950,9 +862,7 @@ function App() {
               {BN_MONTHS[monthCursor.month0]} {toBn(monthCursor.year)}
             </span>
             <button
-              onClick={() =>
-                setMonthCursor((c) => (c.month0 === 11 ? { year: c.year + 1, month0: 0 } : { year: c.year, month0: c.month0 + 1 }))
-              }
+              onClick={() => setMonthCursor((c) => (c.month0 === 11 ? { year: c.year + 1, month0: 0 } : { year: c.year, month0: c.month0 + 1 }))}
               className="w-7 h-7 flex items-center justify-center rounded-full bg-white"
               style={{ border: "1px solid #E7EEE3" }}
             >
@@ -1073,10 +983,6 @@ function App() {
           </button>
         </div>
       </div>
-
-      <p className="text-center text-[11px] mt-6 px-8" style={{ color: "#8A9A8F" }}>
-        এই ডেটা পরিবারের সবার মধ্যে স্বয়ংক্রিয়ভাবে সিঙ্ক থাকে — যে এই অ্যাপ খুলবে সেই দেখতে পাবে।
-      </p>
     </div>
   );
 }
@@ -1154,7 +1060,10 @@ function FieldGroup({ title, fields, entry, onChange, member }) {
   );
 }
 
-ReactDOM.render(<App />, document.getElementById("root"));
+// React 18 Root Render Initialization
+const container = document.getElementById("root");
+const root = ReactDOM.createRoot(container);
+root.render(<App />);
 </script>
 </body>
 </html>
