@@ -307,6 +307,20 @@ function calculateStreak(monthEntries, member, allFields, cursorYear, cursorMont
   return streak;
 }
 
+// Computes week rows (1..N) for the currently open month so week 5 only
+// shows up when the month actually has 29-31 days. Keeps the "সপ্তাহ" label
+// in sync with the same 7-day buckets the progress graph uses (১-৭, ৮-১৪, ...).
+function getWeekRanges(totalDays) {
+  const numWeeks = Math.ceil(totalDays / 7);
+  const ranges = [];
+  for (let w = 1; w <= numWeeks; w++) {
+    const start = (w - 1) * 7 + 1;
+    const end = Math.min(start + 6, totalDays);
+    ranges.push({ week: w, start, end });
+  }
+  return ranges;
+}
+
 function weeklyKey(memberId, year, month0) {
   return `weekly:${memberId}:${monthPrefix(year, month0)}`;
 }
@@ -753,18 +767,28 @@ function App() {
   async function handleSaveWeekly() {
     if (!selectedId) return;
     setSavingWeekly(true);
-    await saveWeekly(selectedId, monthCursor.year, monthCursor.month0, weekly);
-    setSavingWeekly(false);
-    setWeeklySavedTick(true);
-    setTimeout(() => setWeeklySavedTick(false), 1600);
+    try {
+      await saveWeekly(selectedId, monthCursor.year, monthCursor.month0, weekly);
+      setWeeklySavedTick(true);
+      setTimeout(() => setWeeklySavedTick(false), 1600);
+    } catch (err) {
+      alert("সাপ্তাহিক রিফ্লেকশন সেভ করতে সমস্যা হয়েছে: " + err.message);
+    } finally {
+      setSavingWeekly(false);
+    }
   }
 
   async function handleSaveMeeting() {
     setSavingMeeting(true);
-    await saveMeetingData(monthCursor.year, monthCursor.month0, meetingState);
-    setSavingMeeting(false);
-    setMeetingSavedTick(true);
-    setTimeout(() => setMeetingSavedTick(false), 1600);
+    try {
+      await saveMeetingData(monthCursor.year, monthCursor.month0, meetingState);
+      setMeetingSavedTick(true);
+      setTimeout(() => setMeetingSavedTick(false), 1600);
+    } catch (err) {
+      alert("মাসিক সভা সেভ করতে সমস্যা হয়েছে: " + err.message);
+    } finally {
+      setSavingMeeting(false);
+    }
   }
 
   async function handleAddCustomField() {
@@ -775,7 +799,11 @@ function App() {
     setCustomFields(updated);
     setNewCustomLabel("");
     setShowAddCustom(false);
-    await saveCustomFields(updated);
+    try {
+      await saveCustomFields(updated);
+    } catch (err) {
+      alert("কাস্টম টাস্ক সিংক করতে সমস্যা হয়েছে: " + err.message);
+    }
   }
 
   async function handleAddMember() {
@@ -788,7 +816,11 @@ function App() {
     setNewName("");
     setNewGender("male");
     setAddingMember(false);
-    await saveMembers(next);
+    try {
+      await saveMembers(next);
+    } catch (err) {
+      alert("সদস্য সিংক করতে সমস্যা হয়েছে: " + err.message);
+    }
   }
 
   async function handleRemoveMember(m) {
@@ -796,7 +828,11 @@ function App() {
     if (!ok) return;
     const next = (members || []).filter((x) => x.id !== m.id);
     setMembers(next);
-    await saveMembers(next);
+    try {
+      await saveMembers(next);
+    } catch (err) {
+      alert("সদস্য সিংক করতে সমস্যা হয়েছে: " + err.message);
+    }
     if (selectedId === m.id) {
       setSelectedId(next.length ? next[0].id : null);
     }
@@ -809,11 +845,16 @@ function App() {
   async function handleSave() {
     if (!selectedId) return;
     setSaving(true);
-    await saveEntry(selectedId, dateKey(viewDate), entry);
-    setSaving(false);
-    setSavedTick(true);
-    setTimeout(() => setSavedTick(false), 1600);
-    refreshMonth();
+    try {
+      await saveEntry(selectedId, dateKey(viewDate), entry);
+      setSavedTick(true);
+      setTimeout(() => setSavedTick(false), 1600);
+      refreshMonth();
+    } catch (err) {
+      alert("ডাটা সেভ করতে সমস্যা হয়েছে: " + err.message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   const streak = useMemo(
@@ -852,6 +893,7 @@ function App() {
 
           .meeting-table th { background: #f0f4f1 !important; color: #000 !important; font-size: 11px; font-weight: 700; height: 30px; border: 1px solid #333; }
           .meeting-table td { font-size: 10px; padding: 6px; border: 1px solid #333; text-align: left; }
+          .meeting-table tr { page-break-inside: avoid; break-inside: avoid; }
         `}</style>
         
         {/* PAGE 1: Monthly Report & Checklist */}
@@ -916,6 +958,33 @@ function App() {
           <div style={{ border: "1px solid #ddd", padding: "8px", borderRadius: "8px", marginBottom: "15px" }}>
             <h3 style={{ fontSize: "12px", fontWeight: "bold", margin: "0 0 6px 0", color: "#0E4B43" }}>মাসিক অগ্রগতি গ্রাফ (Monthly Progress)</h3>
             <ProgressChart monthEntries={monthEntries} totalDays={monthStats.total} member={selectedMember} allFields={allFields} />
+          </div>
+
+          <div style={{ marginBottom: "15px" }}>
+            <h3 style={{ fontSize: "12px", fontWeight: "bold", margin: "0 0 6px 0", color: "#0E4B43" }}>সাপ্তাহিক রিফ্লেকশন (Weekly Reflection)</h3>
+            <table className="meeting-table">
+              <thead>
+                <tr>
+                  <th style={{ width: "10%" }}>সপ্তাহ</th>
+                  <th style={{ width: "30%", textAlign: "left", paddingLeft: "8px" }}>যা ভালো হয়েছে</th>
+                  <th style={{ width: "30%", textAlign: "left", paddingLeft: "8px" }}>কোথায় ঘাটতি ছিল</th>
+                  <th style={{ width: "30%", textAlign: "left", paddingLeft: "8px" }}>আগামী পরিকল্পনা</th>
+                </tr>
+              </thead>
+              <tbody>
+                {getWeekRanges(total).map(({ week: w, start, end }) => (
+                  <tr key={w}>
+                    <td style={{ textAlign: "center", fontWeight: "bold" }}>
+                      {toBn(w)}
+                      <div style={{ fontSize: "8px", fontWeight: 400, color: "#555" }}>({toBn(start)}-{toBn(end)})</div>
+                    </td>
+                    <td style={{ verticalAlign: "top", whiteSpace: "pre-wrap" }}>{weekly[w]?.good || ""}</td>
+                    <td style={{ verticalAlign: "top", whiteSpace: "pre-wrap" }}>{weekly[w]?.gap || ""}</td>
+                    <td style={{ verticalAlign: "top", whiteSpace: "pre-wrap" }}>{weekly[w]?.plan || ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
           <div style={{ textAlign: "center", marginBottom: "12px", position: "relative" }}>
@@ -1208,10 +1277,11 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[1, 2, 3, 4, 5].map((w) => (
+                  {getWeekRanges(monthStats.total).map(({ week: w, start, end }) => (
                     <tr key={w} className="border-b border-slate-200 hover:bg-slate-50/50">
                       <td className="py-2 px-1 border-r border-slate-200 text-center font-bold text-xs text-emerald-900 bg-slate-50/80">
                         সপ্তাহ {toBn(w)}
+                        <div className="text-[9px] font-semibold text-slate-400 mt-0.5">({toBn(start)}-{toBn(end)})</div>
                       </td>
                       <td className="p-1.5 border-r border-slate-200">
                         <textarea value={weekly[w]?.good || ""} onChange={(e) => updateWeekly(w, "good", e.target.value)} placeholder="এই সপ্তাহে যা ভালো হয়েছে..." rows={2} className="w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-emerald-700 bg-white resize-none" />
@@ -1422,10 +1492,12 @@ function App() {
               <button onClick={() => setShowHelpModal(false)}><X size={18} className="text-slate-400" /></button>
             </div>
             <div className="text-xs text-slate-600 space-y-2.5 leading-relaxed font-medium">
-              <p>১. কাস্টম ফ্যামিলি কোড তৈরি করে পরিবারের সকল সদস্যের ডিভাইসে একই কোড বসিয়ে ডাটা রিয়েল-টাইমে সিংক করুন।</p>
-              <p>২. প্রতিদিনের আমল ও কাজগুলো টিক চিহ্ন বা সংখ্যা দিয়ে পূরণ করুন।</p>
-              <p>৩. মাসের শেষে রিপোর্ট ও পারিবারিক সভার কার্যপরিধি PDF ফাইল হিসেবে প্রিন্ট/সেভ দেওয়া যাবে।</p>
-              <p>৪. প্রিন্ট কপির বাম পাশে পাঞ্চ মার্জিন রাখা হয়েছে যা ফাইলে বাইন্ডিং করার উপযুক্ত।</p>
+              <p>১. কাস্টম ফ্যামিলি কোড তৈরি করে পরিবারের সকল সদস্যের ডিভাইসে একই কোড বসিয়ে ডাটা রিয়েল-টাইমে সিংক করুন।</p>
+              <p>২. প্রতিদিনের আমল ও কাজগুলো টিক চিহ্ন বা সংখ্যা দিয়ে পূরণ করুন। "সেভ" বাটনে চাপ দেওয়ার পর সবুজ টিক (✓) দেখা মানেই ডাটা সিংক হয়েছে।</p>
+              <p>৩. মাসের শেষে দৈনিক রিপোর্ট, অগ্রগতি গ্রাফ, সাপ্তাহিক রিফ্লেকশন এবং পারিবারিক সভার কার্যপরিধি — সবকিছু একসাথে ২ পৃষ্ঠার PDF ফাইল হিসেবে প্রিন্ট/সেভ দেওয়া যাবে।</p>
+              <p>৪. প্রিন্ট কপির বাম পাশে পাঞ্চ মার্জিন রাখা হয়েছে যা ফাইলে বাইন্ডিং করার উপযুক্ত।</p>
+              <p>৫. মেনু থেকে "এক্সপোর্ট" করে পুরো পরিবারের ডাটার একটি ব্যাকআপ (.json) ফাইল ডাউনলোড করে রাখুন। প্রয়োজনে একই মেনু থেকে "ইম্পোর্ট" করে তা ফিরিয়ে আনা যাবে।</p>
+              <p>৬. সেভ বা এক্সপোর্ট করার সময় "সমস্যা হয়েছে" জাতীয় বার্তা দেখালে সেটি সাধারণত ইন্টারনেট সংযোগ বা ডাটাবেজ পারমিশনের সমস্যা — এমন হলে আবার চেষ্টা করুন, সমস্যা থাকলে ফিডব্যাক অপশনে জানান।</p>
             </div>
             <button onClick={() => setShowHelpModal(false)} className="w-full mt-5 h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold">বুঝেছি</button>
           </div>
