@@ -282,15 +282,21 @@ function fieldPercent(field, monthEntries, totalDays, member) {
   return Math.round((hit / totalDays) * 100);
 }
 
-function calculateStreak(monthEntries, member, allFields) {
+function calculateStreak(monthEntries, member, allFields, cursorYear, cursorMonth0) {
   let streak = 0;
   const today = new Date();
   const d = new Date(today);
 
   for (let i = 0; i < 365; i++) {
+    // monthEntries only holds data for the currently-loaded month (keyed by
+    // day-of-month, e.g. "05"). Once we step outside that month we no longer
+    // have real data for that day, so stop rather than wrongly reusing a
+    // same-numbered day from a different month.
+    if (d.getFullYear() !== cursorYear || d.getMonth() !== cursorMonth0) break;
+
     const dayStr = pad2(d.getDate());
     const entry = monthEntries[dayStr];
-    
+
     if (entry && dailyScore(entry, member, allFields) >= 0.5) {
       streak++;
     } else if (i > 0) {
@@ -569,16 +575,11 @@ function App() {
       } catch {}
       if (last && m.find((x) => x.id === last)) {
         setSelectedId(last);
-      } else if (m && m.length > 0) {
+      } else if (m.length) {
         setSelectedId(m[0].id);
       }
     })();
   }, []);
-
-  const handleSelectMember = (id) => {
-    setSelectedId(id);
-    appStorage.set("last-selected-member", JSON.stringify(id), false);
-  };
 
   const allFields = useMemo(() => {
     return [...DEFAULT_DEEN_FIELDS, ...DEFAULT_DUNIYA_FIELDS, ...customFields];
@@ -588,6 +589,10 @@ function App() {
     () => (members || []).find((m) => m.id === selectedId) || null,
     [members, selectedId]
   );
+
+  useEffect(() => {
+    appStorage.set("last-selected-member", JSON.stringify(selectedId || null), false).catch(() => {});
+  }, [selectedId]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -735,10 +740,7 @@ function App() {
   }
 
   async function handleSaveWeekly() {
-    if (!selectedId) {
-      alert("অনুগ্রহ করে একটি সদস্য যোগ করুন অথবা নির্বাচন করুন!");
-      return;
-    }
+    if (!selectedId) return;
     setSavingWeekly(true);
     await saveWeekly(selectedId, monthCursor.year, monthCursor.month0, weekly);
     setSavingWeekly(false);
@@ -771,11 +773,22 @@ function App() {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const next = [...(members || []), { id, name, gender: newGender }];
     setMembers(next);
-    handleSelectMember(id);
+    setSelectedId(id);
     setNewName("");
     setNewGender("male");
     setAddingMember(false);
     await saveMembers(next);
+  }
+
+  async function handleRemoveMember(m) {
+    const ok = window.confirm(`আপনি কি নিশ্চিত "${m.name}" কে সদস্য তালিকা থেকে বাদ দিতে চান? এই সদস্যের নাম আর দেখা যাবে না, তবে পূর্বের সেভ করা ডাটা মুছে যাবে না।`);
+    if (!ok) return;
+    const next = (members || []).filter((x) => x.id !== m.id);
+    setMembers(next);
+    await saveMembers(next);
+    if (selectedId === m.id) {
+      setSelectedId(next.length ? next[0].id : null);
+    }
   }
 
   function updateField(key, value) {
@@ -783,11 +796,7 @@ function App() {
   }
 
   async function handleSave() {
-    if (!selectedId) {
-      alert("অনুগ্রহ করে সদস্য নির্বাচন বা যোগ করুন!");
-      setAddingMember(true);
-      return;
-    }
+    if (!selectedId) return;
     setSaving(true);
     await saveEntry(selectedId, dateKey(viewDate), entry);
     setSaving(false);
@@ -796,7 +805,10 @@ function App() {
     refreshMonth();
   }
 
-  const streak = useMemo(() => calculateStreak(monthEntries, selectedMember, allFields), [monthEntries, selectedMember, allFields]);
+  const streak = useMemo(
+    () => calculateStreak(monthEntries, selectedMember, allFields, monthCursor.year, monthCursor.month0),
+    [monthEntries, selectedMember, allFields, monthCursor]
+  );
 
   const monthStats = useMemo(() => {
     const total = daysInMonth(monthCursor.year, monthCursor.month0);
@@ -991,11 +1003,20 @@ function App() {
                       {members.map((m) => (
                         <div
                           key={m.id}
-                          onClick={() => { handleSelectMember(m.id); setIsMenuOpen(false); }}
-                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer ${m.id === selectedId ? "bg-emerald-50 text-emerald-900 font-bold" : "hover:bg-slate-50 text-slate-700"}`}
+                          onClick={() => { setSelectedId(m.id); setIsMenuOpen(false); }}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer group ${m.id === selectedId ? "bg-emerald-50 text-emerald-900 font-bold" : "hover:bg-slate-50 text-slate-700"}`}
                         >
                           <span className="flex items-center gap-2"><User size={13} /> {m.name}</span>
-                          {m.id === selectedId && <span className="w-2 h-2 rounded-full bg-emerald-600"></span>}
+                          <span className="flex items-center gap-1.5">
+                            {m.id === selectedId && <span className="w-2 h-2 rounded-full bg-emerald-600"></span>}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleRemoveMember(m); }}
+                              className="p-1 rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="সদস্য বাদ দিন"
+                            >
+                              <Trash size={12} />
+                            </button>
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -1069,7 +1090,7 @@ function App() {
             {members.map((m) => (
               <button
                 key={m.id}
-                onClick={() => handleSelectMember(m.id)}
+                onClick={() => setSelectedId(m.id)}
                 className="px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shrink-0 shadow-sm"
                 style={{
                   background: m.id === selectedId ? "#C89B3C" : "rgba(255,255,255,0.12)",
@@ -1079,14 +1100,6 @@ function App() {
                 <User size={13} /> {m.name}
               </button>
             ))}
-            {members.length === 0 && (
-              <button
-                onClick={() => setAddingMember(true)}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#C89B3C] text-[#16302B] flex items-center gap-1"
-              >
-                <Plus size={13} /> সদস্য যোগ করুন
-              </button>
-            )}
           </div>
           
           <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-xl shrink-0 border border-white/10">
@@ -1097,11 +1110,11 @@ function App() {
 
         {/* Add Member Quick Input */}
         {addingMember && (
-          <div className="mt-3 bg-white/10 p-2.5 rounded-2xl border border-white/20 flex items-center gap-2 backdrop-blur-md">
+          <div className="mt-3 bg-white/10 p-2 rounded-2xl border border-white/20 flex items-center gap-2 backdrop-blur-md">
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="সদস্যের নাম লিখুন..."
+              placeholder="সদস্যের নাম..."
               className="flex-1 px-3 py-1.5 rounded-xl text-xs text-slate-900 outline-none font-medium"
             />
             <select
@@ -1110,52 +1123,13 @@ function App() {
               className="px-2 py-1.5 rounded-xl text-xs text-slate-900 bg-white outline-none font-medium"
             >
               <option value="male">পুরুষ</option>
-              <option value="female">মহিলা</option>
+              <option value="female">নারী</option>
             </select>
-            <button onClick={handleAddMember} className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#C89B3C] text-[#16302B]">যোগ করুন</button>
-            {members.length > 0 && (
-              <button onClick={() => setAddingMember(false)} className="p-1.5 text-white/80"><X size={16} /></button>
-            )}
+            <button onClick={handleAddMember} className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#C89B3C] text-[#16302B]">যোগ</button>
+            <button onClick={() => setAddingMember(false)} className="p-1.5 text-white/80"><X size={16} /></button>
           </div>
         )}
       </div>
-
-      {/* Onboarding Modal - Show when no members exist */}
-      {members.length === 0 && !addingMember && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center px-5 z-50">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-slate-100 text-center">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto mb-3">
-              <User size={24} />
-            </div>
-            <h3 className="font-bold text-base text-slate-800 mb-1">স্বাগতম! আপনার নাম যোগ করুন</h3>
-            <p className="text-xs text-slate-500 mb-4">ডেইলি টাস্ক অ্যাপে আপনার ট্র্যাকিং শুরু করতে আপনার নাম ও জেন্ডার যোগ করুন।</p>
-            
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="আপনার নাম লিখুন..."
-              className="w-full h-10 border border-slate-200 rounded-xl px-3 text-xs mb-3 outline-none font-medium focus:border-emerald-800"
-            />
-            
-            <select
-              value={newGender}
-              onChange={(e) => setNewGender(e.target.value)}
-              className="w-full h-10 border border-slate-200 rounded-xl px-3 text-xs mb-4 outline-none font-medium text-slate-700 bg-slate-50"
-            >
-              <option value="male">পুরুষ</option>
-              <option value="female">মহিলা</option>
-            </select>
-
-            <button
-              onClick={handleAddMember}
-              className="w-full h-10 bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-md hover:bg-emerald-950 transition-all"
-            >
-              এগিয়ে যান
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Main Content Area */}
       <div className="max-w-2xl mx-auto">
@@ -1163,12 +1137,12 @@ function App() {
         {/* Date Selector Card */}
         <div className="px-5 -mt-4">
           <div className="bg-white rounded-2xl shadow-sm px-4 py-2.5 flex items-center justify-between border border-slate-200/80">
-            <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() - 1)))} className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-all text-slate-700"><ChevronLeft size={16} /></button>
+            <button onClick={() => setViewDate((d) => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; })} className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-all text-slate-700"><ChevronLeft size={16} /></button>
             <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
               <CalIcon size={16} color="#0E4B43" />
               <span>{toBn(viewDate.getDate())} {BN_MONTHS[viewDate.getMonth()]} {toBn(viewDate.getFullYear())}</span>
             </div>
-            <button onClick={() => setViewDate(new Date(viewDate.setDate(viewDate.getDate() + 1)))} className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-all text-slate-700"><ChevronRight size={16} /></button>
+            <button onClick={() => setViewDate((d) => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; })} className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-all text-slate-700"><ChevronRight size={16} /></button>
           </div>
         </div>
 
