@@ -53,16 +53,13 @@
     messagingSenderId: "10031644603",
     appId: "1:10031644603:web:afaf01434c65147d988e9e"
   };
-  
-  if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
-  }
+  firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
-  db.enablePersistence({synchronizeTabs: true}).catch(() => {});
+  db.enablePersistence().catch(() => {});
 
   function getFamilyCode() {
     let code = localStorage.getItem("family_code");
-    if (!code || code.trim() === "") {
+    if (!code) {
       code = "FAM-" + Math.random().toString(36).substring(2, 8).toUpperCase();
       localStorage.setItem("family_code", code);
     }
@@ -71,7 +68,7 @@
 
   function setFamilyCode(code) {
     if(!code || !code.trim()) return;
-    localStorage.setItem("family_code", code.trim().toUpperCase());
+    localStorage.setItem("family_code", code.trim());
     window.location.reload();
   }
 
@@ -79,64 +76,44 @@
 
   const appStorage = {
     async get(key, shared) {
-      try {
-        if (!shared) {
-          const v = localStorage.getItem(key);
-          return v !== null ? { key, value: v, shared } : null;
-        }
-        const doc = await db.collection(getCollectionName()).doc(key).get();
-        if (!doc.exists) {
-          const localV = localStorage.getItem(key);
-          return localV !== null ? { key, value: localV, shared } : null;
-        }
-        return { key, value: doc.data().value, shared };
-      } catch (err) {
+      if (!shared) {
         const v = localStorage.getItem(key);
         return v !== null ? { key, value: v, shared } : null;
       }
+      const doc = await db.collection(getCollectionName()).doc(key).get();
+      if (!doc.exists) return null;
+      return { key, value: doc.data().value, shared };
     },
     async set(key, value, shared) {
-      localStorage.setItem(key, value); // ব্যাকআপ লোকাল স্টোরেজে রাখছি
-      if (shared) {
-        try {
-          await db.collection(getCollectionName()).doc(key).set({ value, updatedAt: Date.now() });
-        } catch (e) {
-          console.error("Firestore sync error:", e);
-        }
+      if (!shared) {
+        localStorage.setItem(key, value);
+        return { key, value, shared };
       }
+      await db.collection(getCollectionName()).doc(key).set({ value, updatedAt: Date.now() });
       return { key, value, shared };
     },
     async delete(key, shared) {
-      localStorage.removeItem(key);
-      if (shared) {
-        try {
-          await db.collection(getCollectionName()).doc(key).delete();
-        } catch (e) {}
+      if (!shared) {
+        localStorage.removeItem(key);
+        return { key, deleted: true, shared };
       }
+      await db.collection(getCollectionName()).doc(key).delete();
       return { key, deleted: true, shared };
     },
     async list(prefix, shared) {
-      try {
-        if (!shared) {
-          const keys = Object.keys(localStorage).filter((k) => !prefix || k.startsWith(prefix));
-          return { keys, prefix, shared };
-        }
-        let q = db.collection(getCollectionName());
-        if (prefix) {
-          q = q
-            .where(firebase.firestore.FieldPath.documentId(), ">=", prefix)
-            .where(firebase.firestore.FieldPath.documentId(), "<", prefix + "\uf8ff");
-        }
-        const snap = await q.get();
-        let keys = snap.docs.map((d) => d.id);
-        if (keys.length === 0) {
-          keys = Object.keys(localStorage).filter((k) => !prefix || k.startsWith(prefix));
-        }
-        return { keys, prefix, shared };
-      } catch (err) {
+      if (!shared) {
         const keys = Object.keys(localStorage).filter((k) => !prefix || k.startsWith(prefix));
         return { keys, prefix, shared };
       }
+      let q = db.collection(getCollectionName());
+      if (prefix) {
+        q = q
+          .where(firebase.firestore.FieldPath.documentId(), ">=", prefix)
+          .where(firebase.firestore.FieldPath.documentId(), "<", prefix + "\uf8ff");
+      }
+      const snap = await q.get();
+      const keys = snap.docs.map((d) => d.id);
+      return { keys, prefix, shared };
     }
   };
 
@@ -598,6 +575,11 @@ function App() {
     })();
   }, []);
 
+  const handleSelectMember = (id) => {
+    setSelectedId(id);
+    appStorage.set("last-selected-member", JSON.stringify(id), false);
+  };
+
   const allFields = useMemo(() => {
     return [...DEFAULT_DEEN_FIELDS, ...DEFAULT_DUNIYA_FIELDS, ...customFields];
   }, [customFields]);
@@ -609,7 +591,6 @@ function App() {
 
   useEffect(() => {
     if (!selectedId) return;
-    appStorage.set("last-selected-member", JSON.stringify(selectedId), false);
     loadEntry(selectedId, dateKey(viewDate)).then((data) => {
       setEntry(data || {});
     });
@@ -639,26 +620,24 @@ function App() {
 
   useEffect(() => {
     const docKey = meetingKey(monthCursor.year, monthCursor.month0);
-    let unsubscribe = () => {};
-    try {
-      const docRef = db.collection(getCollectionName()).doc(docKey);
-      unsubscribe = docRef.onSnapshot((doc) => {
-        if (doc.exists) {
-          try {
-            const data = JSON.parse(doc.data().value);
-            setMeetingState(data);
-          } catch (e) {}
-        } else {
-          setMeetingState({
-            meetingSubHeader: `${BN_MONTHS[monthCursor.month0]}'${toBn(monthCursor.year)}`,
-            meetingDate: "",
-            rows: [
-              { id: "1", topic: "", decision: "", person: "" }
-            ]
-          });
-        }
-      }, () => {});
-    } catch(e){}
+    const docRef = db.collection(getCollectionName()).doc(docKey);
+
+    const unsubscribe = docRef.onSnapshot((doc) => {
+      if (doc.exists) {
+        try {
+          const data = JSON.parse(doc.data().value);
+          setMeetingState(data);
+        } catch (e) {}
+      } else {
+        setMeetingState({
+          meetingSubHeader: `${BN_MONTHS[monthCursor.month0]}'${toBn(monthCursor.year)}`,
+          meetingDate: "",
+          rows: [
+            { id: "1", topic: "", decision: "", person: "" }
+          ]
+        });
+      }
+    });
 
     return () => unsubscribe();
   }, [monthCursor]);
@@ -694,7 +673,6 @@ function App() {
           Object.keys(parsed).forEach((key) => {
             const docRef = colRef.doc(key);
             batch.set(docRef, parsed[key]);
-            if(parsed[key].value) localStorage.setItem(key, parsed[key].value);
           });
           await batch.commit();
           alert("ডাটা সফলভাবে ইম্পোর্ট করা হয়েছে!");
@@ -790,7 +768,7 @@ function App() {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const next = [...(members || []), { id, name, gender: newGender }];
     setMembers(next);
-    setSelectedId(id);
+    handleSelectMember(id);
     setNewName("");
     setNewGender("male");
     setAddingMember(false);
@@ -1006,7 +984,7 @@ function App() {
                       {members.map((m) => (
                         <div
                           key={m.id}
-                          onClick={() => { setSelectedId(m.id); setIsMenuOpen(false); }}
+                          onClick={() => { handleSelectMember(m.id); setIsMenuOpen(false); }}
                           className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer ${m.id === selectedId ? "bg-emerald-50 text-emerald-900 font-bold" : "hover:bg-slate-50 text-slate-700"}`}
                         >
                           <span className="flex items-center gap-2"><User size={13} /> {m.name}</span>
@@ -1084,7 +1062,7 @@ function App() {
             {members.map((m) => (
               <button
                 key={m.id}
-                onClick={() => setSelectedId(m.id)}
+                onClick={() => handleSelectMember(m.id)}
                 className="px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shrink-0 shadow-sm"
                 style={{
                   background: m.id === selectedId ? "#C89B3C" : "rgba(255,255,255,0.12)",
