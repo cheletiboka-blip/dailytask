@@ -196,7 +196,7 @@ const DEFAULT_DUNIYA_FIELDS = [
   { key: "earlyMorning", label: "ভোরের বরকতময় সময়কে কাজে লাগানো", shortLabel: "ভোরের সময়", type: "bool" },
   { key: "exercise", label: "ব্যায়াম/শরীরচর্চা", shortLabel: "ব্যায়াম", type: "bool" },
   { key: "healthyFood", label: "স্বাস্থ্যকর খাবার", shortLabel: "স্বাস্থ্যকর খাবার", type: "bool" },
-  { key: "familyTime", label: "পরিবার ও নিকট আত্মীয়দের সময় দেওয়া", shortLabel: "পারিবারিক সময়", type: "bool" },
+  { key: "familyTime", label: "পরিবারে সময় দেয়া ও আত্মীয়দের খোঁজ নেয়া", shortLabel: "পারিবারিক সময়", type: "bool" },
   { key: "screenLimit", label: "সোশ্যাল মিডিয়া/মোবাইল সীমিত ব্যবহার", shortLabel: "সীমিত স্ক্রিন", type: "bool" },
   { key: "noHurtingOthers", label: "অন্যের হক নষ্ট/মনে কষ্ট না দেয়া", shortLabel: "সদাচরণ", type: "bool" },
   { key: "noProcrastination", label: "অলসতা/কাজ ফেলে না রাখা", shortLabel: "অলসতা মুক্ত", type: "bool" },
@@ -586,8 +586,6 @@ function App() {
   const [weeklySavedTick, setWeeklySavedTick] = useState(false);
 
   const [meetingState, setMeetingState] = useState({
-    meetingSubHeader: "",
-    meetingDate: "",
     rows: [{ id: "1", topic: "", decision: "", person: "" }]
   });
   const [savingMeeting, setSavingMeeting] = useState(false);
@@ -597,6 +595,9 @@ function App() {
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showFamilyCodeModal, setShowFamilyCodeModal] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [archiveYear, setArchiveYear] = useState(() => new Date().getFullYear());
+  const [archiveMonth0, setArchiveMonth0] = useState(() => new Date().getMonth());
   const [customFamCodeInput, setCustomFamCodeInput] = useState("");
   const [feedbackMsg, setFeedbackMsg] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
@@ -617,6 +618,9 @@ function App() {
         setSelectedId(last);
       } else if (m.length) {
         setSelectedId(m[0].id);
+      } else {
+        // No members yet — this is a first-time setup, prompt for name & gender right away
+        setAddingMember(true);
       }
     })();
   }, []);
@@ -682,8 +686,6 @@ function App() {
         } catch (e) {}
       } else {
         setMeetingState({
-          meetingSubHeader: `${BN_MONTHS[monthCursor.month0]}'${toBn(monthCursor.year)}`,
-          meetingDate: "",
           rows: [
             { id: "1", topic: "", decision: "", person: "" }
           ]
@@ -746,6 +748,12 @@ function App() {
     if (customFamCodeInput.trim()) {
       setFamilyCode(customFamCodeInput.trim());
     }
+  }
+
+  function handleGoToArchive() {
+    setMonthCursor({ year: archiveYear, month0: archiveMonth0 });
+    setViewDate(new Date(archiveYear, archiveMonth0, 1));
+    setShowArchiveModal(false);
   }
 
   function handleSendFeedback() {
@@ -1019,10 +1027,10 @@ function App() {
               মাসিক পারিবারিক সভা ও সিদ্ধান্ত
             </h2>
             <div style={{ fontSize: 13, marginTop: "2px", color: "#333", fontWeight: "600" }}>
-              {meetingState.meetingSubHeader || `${BN_MONTHS[monthCursor.month0]}'${toBn(monthCursor.year)}`}
+              {BN_MONTHS[monthCursor.month0]}'{toBn(monthCursor.year)}
             </div>
             <div style={{ position: "absolute", right: "0", top: "5px", fontSize: "12px", fontWeight: "bold", color: "#111" }}>
-              {meetingState.meetingDate}
+              {(() => { const t = new Date(); return `${toBn(t.getDate())} ${BN_MONTHS[t.getMonth()]}, ${toBn(t.getFullYear())}`; })()}
             </div>
           </div>
 
@@ -1156,6 +1164,12 @@ function App() {
                       <UploadIcon size={14} /> ব্যাকআপ ইম্পোর্ট ফাইল
                       <input type="file" accept=".json" onChange={(e) => { handleImportData(e); setIsMenuOpen(false); }} className="hidden" />
                     </label>
+                    <button
+                      onClick={() => { setArchiveYear(monthCursor.year); setArchiveMonth0(monthCursor.month0); setShowArchiveModal(true); setIsMenuOpen(false); }}
+                      className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                    >
+                      <CalIcon size={14} /> আর্কাইভ দেখুন (মাস/সাল)
+                    </button>
                   </div>
 
                   <div className="border-t border-slate-100 my-1"></div>
@@ -1208,7 +1222,13 @@ function App() {
 
         {/* Add Member Quick Input */}
         {addingMember && (
-          <div className="mt-3 bg-white/10 p-2 rounded-2xl border border-white/20 flex items-center gap-2 backdrop-blur-md">
+          <div className="mt-3 bg-white/10 p-2 rounded-2xl border border-white/20 backdrop-blur-md">
+            {members.length === 0 && (
+              <p className="text-[11px] text-emerald-100 font-semibold px-1 mb-1.5">
+                শুরু করতে আপনার নাম ও জেন্ডার দিয়ে নিজেকে একজন সদস্য হিসেবে যোগ করুন 👇
+              </p>
+            )}
+            <div className="flex items-center gap-2">
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
@@ -1225,6 +1245,7 @@ function App() {
             </select>
             <button onClick={handleAddMember} className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#C89B3C] text-[#16302B]">যোগ</button>
             <button onClick={() => setAddingMember(false)} className="p-1.5 text-white/80"><X size={16} /></button>
+            </div>
           </div>
         )}
       </div>
@@ -1233,7 +1254,7 @@ function App() {
       <div className="max-w-2xl mx-auto">
         
         {/* Date Selector Card */}
-        <div className="px-5 -mt-4">
+        <div className="px-5 mt-3">
           <div className="bg-white rounded-2xl shadow-sm px-4 py-2.5 flex items-center justify-between border border-slate-200/80">
             <button onClick={() => setViewDate((d) => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; })} className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-all text-slate-700"><ChevronLeft size={16} /></button>
             <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
@@ -1388,27 +1409,10 @@ function App() {
           </div>
 
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-3 border-b border-slate-100">
-              <div>
-                <label className="text-xs font-bold text-slate-600 mb-1 block">সভার মাস/উপ-শিরোনাম</label>
-                <input
-                  type="text"
-                  value={meetingState.meetingSubHeader}
-                  onChange={(e) => setMeetingState({ ...meetingState, meetingSubHeader: e.target.value })}
-                  placeholder="যেমন: জুলাই'২০২৬"
-                  className="w-full h-9 rounded-xl border border-slate-200 px-3 text-xs outline-none font-medium bg-slate-50 focus:bg-white"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-600 mb-1 block">তারিখ (ডানপাশে দেখাবে)</label>
-                <input
-                  type="text"
-                  value={meetingState.meetingDate}
-                  onChange={(e) => setMeetingState({ ...meetingState, meetingDate: e.target.value })}
-                  placeholder="যেমন: Jul 26, 2026"
-                  className="w-full h-9 rounded-xl border border-slate-200 px-3 text-xs outline-none font-medium bg-slate-50 focus:bg-white"
-                />
-              </div>
+            <div className="pb-1">
+              <p className="text-xs text-slate-500 font-medium">
+                {BN_MONTHS[monthCursor.month0]}'{toBn(monthCursor.year)} — সভার তারিখ অটোমেটিক আজকের তারিখ ({(() => { const t = new Date(); return `${toBn(t.getDate())} ${BN_MONTHS[t.getMonth()]}, ${toBn(t.getFullYear())}`; })()}) হিসেবে দেখাবে
+              </p>
             </div>
 
             {/* Table Container with Horizontal Scroll support */}
@@ -1482,6 +1486,38 @@ function App() {
         </div>
 
       </div>
+
+      {/* Archive Month/Year Picker Modal */}
+      {showArchiveModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50">
+          <div className="bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100">
+            <h3 className="font-bold text-sm mb-1 text-slate-800">আর্কাইভ দেখুন</h3>
+            <p className="text-[11px] text-slate-500 mb-3">যে মাস ও সালের ডাটা দেখতে চান তা বেছে নিন — সাথে সাথে সেই মাসের দৈনিক এন্ট্রি, মাসিক ওভারভিউ ও সভার তথ্য দেখা যাবে।</p>
+            <div className="flex gap-2 mb-4">
+              <select
+                value={archiveMonth0}
+                onChange={(e) => setArchiveMonth0(parseInt(e.target.value, 10))}
+                className="flex-1 h-10 border border-slate-200 rounded-xl px-2 text-xs outline-none font-bold text-emerald-900 focus:border-emerald-800 bg-white"
+              >
+                {BN_MONTHS.map((m, i) => (<option key={i} value={i}>{m}</option>))}
+              </select>
+              <select
+                value={archiveYear}
+                onChange={(e) => setArchiveYear(parseInt(e.target.value, 10))}
+                className="w-28 h-10 border border-slate-200 rounded-xl px-2 text-xs outline-none font-bold text-emerald-900 focus:border-emerald-800 bg-white"
+              >
+                {Array.from({ length: 8 }, (_, i) => new Date().getFullYear() - 6 + i).map((y) => (
+                  <option key={y} value={y}>{toBn(y)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleGoToArchive} className="flex-1 h-9 bg-emerald-800 text-white rounded-xl text-xs font-bold">দেখুন</button>
+              <button onClick={() => setShowArchiveModal(false)} className="flex-1 h-9 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold">বাতিল</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Custom Family Code Modal */}
       {showFamilyCodeModal && (
