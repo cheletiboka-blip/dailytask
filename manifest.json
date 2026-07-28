@@ -43,21 +43,21 @@
     },
     {
       "src": "screenshots/mobile-2.png",
-      "sizes": "727x1600",
+      "sizes": "872x1600",
       "type": "image/png",
       "form_factor": "narrow",
       "label": "সাপ্তাহিক রিফ্লেকশন ও মাসিক ওভারভিউ"
     },
     {
       "src": "screenshots/desktop-1.png",
-      "sizes": "1900x910",
+      "sizes": "1858x708",
       "type": "image/png",
       "form_factor": "wide",
       "label": "ডেস্কটপ ভিউ - দৈনন্দিন আমল"
     },
     {
       "src": "screenshots/desktop-2.png",
-      "sizes": "1884x879",
+      "sizes": "1026x826",
       "type": "image/png",
       "form_factor": "wide",
       "label": "ডেস্কটপ ভিউ - মাসিক ওভারভিউ"
