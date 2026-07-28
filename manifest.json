@@ -15,6 +15,9 @@
   "prefer_related_applications": false,
   "related_applications": [],
   "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
   "shortcuts": [
     {
       "name": "আজকের আমল",
