@@ -2,12 +2,47 @@
   "id": "/",
   "name": "Daily Task - দ্বীন ও দুনিয়া ট্র্যাকার",
   "short_name": "Daily Task",
+  "description": "দৈনন্দিন আমল, ইবাদত ও পারিবারিক কার্যক্রম ট্র্যাক করার জন্য একটি সহজ ও কার্যকর অ্যাপ। নামাজ, কুরআন তেলাওয়াত, সাপ্তাহিক রিফ্লেকশন ও মাসিক ওভারভিউ একসাথে দেখুন।",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#F4F7F1",
   "theme_color": "#0E4B43",
   "orientation": "portrait",
+  "lang": "bn",
+  "dir": "ltr",
+  "categories": ["lifestyle", "productivity", "utilities"],
+  "prefer_related_applications": false,
+  "screenshots": [
+    {
+      "src": "screenshots/mobile-1.png",
+      "sizes": "727x1600",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "দৈনন্দিন আমল ট্র্যাকিং স্ক্রিন"
+    },
+    {
+      "src": "screenshots/mobile-2.png",
+      "sizes": "727x1600",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "সাপ্তাহিক রিফ্লেকশন ও মাসিক ওভারভিউ"
+    },
+    {
+      "src": "screenshots/desktop-1.png",
+      "sizes": "1900x910",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "ডেস্কটপ ভিউ - দৈনন্দিন আমল"
+    },
+    {
+      "src": "screenshots/desktop-2.png",
+      "sizes": "1884x879",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "ডেস্কটপ ভিউ - মাসিক ওভারভিউ"
+    }
+  ],
   "icons": [
     {
       "src": "icon-192.png",
