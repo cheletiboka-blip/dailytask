@@ -1,4 +1,4 @@
-const CACHE = "daily-task-v2";
+const CACHE = "daily-task-v3";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png", "./app.js", "./app.css"];
 
 self.addEventListener("install", (e) => {
