@@ -36,36 +36,39 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
 
+  // URL Normalization for Cache matching
+  const requestUrl = new URL(e.request.url);
+
   e.respondWith(
     caches.match(e.request).then((cachedResponse) => {
-      // ১. যদি ক্যাশে থাকে, সরাসরি দ্রুত রিটার্ন করবে (প্রসেস বন্ধ থাকলেও কাজ করবে)
+      // ১. ক্যাশে থাকলে সরাসরি ক্যাশ থেকেই ফেরত দেবে (অফলাইন ও প্রসেস বন্ধ থাকলেও চলবে)
       if (cachedResponse) {
-        // ব্যাকগ্রাউন্ডে নতুন আপডেট থাকলে ক্যাশে সিঙ্ক করার চেষ্টা করবে
+        // ব্যাকগ্রাউন্ডে সাইলেন্ট আপডেট
         fetch(e.request)
           .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200 && e.request.url.startsWith(self.location.origin)) {
+            if (networkResponse && networkResponse.status === 200 && requestUrl.origin === self.location.origin) {
               const clone = networkResponse.clone();
               caches.open(CACHE).then((cache) => cache.put(e.request, clone));
             }
           })
           .catch(() => {
-            /* অফলাইনে থাকলে কোনো ত্রুটি দেখাবে না */
+            /* অফলাইনে থাকলে ব্যাকগ্রাউন্ড এরর ইগনোর করবে */
           });
 
         return cachedResponse;
       }
 
-      // ২. ক্যাশে না থাকলে নেটওয়ার্ক থেকে নিয়ে আসবে
+      // ২. ক্যাশে না থাকলে নেটওয়ার্ক থেকে আনবে
       return fetch(e.request)
         .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200 && e.request.url.startsWith(self.location.origin)) {
+          if (networkResponse && networkResponse.status === 200 && requestUrl.origin === self.location.origin) {
             const clone = networkResponse.clone();
             caches.open(CACHE).then((cache) => cache.put(e.request, clone));
           }
           return networkResponse;
         })
         .catch(async () => {
-          // ৩. নেটওয়ার্ক ব্যর্থ হলে / অরেস্পন্সিভ হলে fallback
+          // ৩. নেটওয়ার্ক ব্যর্থ হলে (ERR_FAILED বা অফলাইন) ফ্যালব্যাক পেজ দেখাবে
           if (e.request.mode === "navigate") {
             const fallback = (await caches.match("/index.html")) || (await caches.match("/"));
             if (fallback) return fallback;
@@ -73,7 +76,7 @@ self.addEventListener("fetch", (e) => {
           return new Response("Offline and no cached version available.", {
             status: 503,
             statusText: "Service Unavailable",
-            headers: { "Content-Type": "text/plain" },
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
           });
         });
     })
