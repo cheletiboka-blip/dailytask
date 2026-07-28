@@ -3,8 +3,8 @@
   "name": "Daily Task - দ্বীন ও দুনিয়া ট্র্যাকার",
   "short_name": "Daily Task",
   "description": "দৈনন্দিন আমল, ইবাদত ও পারিবারিক কার্যক্রম ট্র্যাক করার জন্য একটি সহজ ও কার্যকর অ্যাপ। নামাজ, কুরআন তেলাওয়াত, সাপ্তাহিক রিফ্লেকশন ও মাসিক ওভারভিউ একসাথে দেখুন।",
-  "start_url": "./index.html",
-  "scope": "./",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#F4F7F1",
   "theme_color": "#0E4B43",
@@ -23,7 +23,7 @@
       "name": "আজকের আমল",
       "short_name": "আজকের আমল",
       "description": "আজকের দৈনন্দিন আমল দেখুন ও পূরণ করুন",
-      "url": "./index.html",
+      "url": "/",
       "icons": [
         {
           "src": "icon-192.png",
