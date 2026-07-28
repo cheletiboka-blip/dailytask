@@ -5,17 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>Daily Task — আমল ও পারিবারিক ট্র্যাকার</title>
 <meta name="theme-color" content="#0E4B43" />
-<link rel="manifest" href="/manifest.json" />
-<link rel="icon" href="/icon-192.png" />
-<link rel="apple-touch-icon" href="/icon-192.png" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
 
 <!-- Tailwind CSS -->
 <script src="https://cdn.tailwindcss.com"></script>
 
-<!-- React 18 + Babel -->
+<!-- React 18 -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -24,21 +23,30 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-<link rel="stylesheet" href="app.css" />
+<style>
+  :root { --theme-primary: #0E4B43; }
+  html, body { background: #F4F7F1; margin: 0; padding: 0; font-family: 'Hind Siliguri', sans-serif; }
+  .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+  
+  @media print {
+    @page { 
+      size: A4 portrait; 
+      margin: 10mm 10mm 10mm 15mm !important;
+    }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff !important; width: 183mm !important; }
+    .no-print { display: none !important; }
+    .page-break { page-break-before: always; }
+    .print-page { width: 183mm !important; max-width: 183mm !important; box-sizing: border-box !important; }
+    .print-daily-table { width: 100% !important; table-layout: fixed !important; }
+    .print-daily-table th, .print-daily-table td { box-sizing: border-box !important; }
+  }
+</style>
+
 </head>
 <body>
 <div id="root"></div>
 
-<script type="text/babel" src="app.js"></script>
-
-<script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/sw.js").catch((err) => {
-        console.error("Service worker registration failed:", err);
-      });
-    });
-  }
-</script>
+<script src="app.js"></script>
 </body>
 </html>
