@@ -9,12 +9,13 @@
 <link rel="icon" href="icon-192.png" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 
-<!-- Pre-built Tailwind CSS (purged, minified — no runtime JIT compiler) -->
-<link rel="stylesheet" href="app.css" />
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
 
-<!-- React 18 -->
+<!-- React 18 + Babel -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -22,92 +23,12 @@
 <!-- Firebase compat libraries -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<link rel="stylesheet" href="app.css" />
 </head>
 <body>
 <div id="root"></div>
 
-<script>
-  // Firebase Setup
-  const firebaseConfig = {
-    apiKey: "AIzaSyCqvGSmjEY6PRnsdGh016Ta1m8PLjolqgA",
-    authDomain: "daily-task-family.firebaseapp.com",
-    projectId: "daily-task-family",
-    storageBucket: "daily-task-family.firebasestorage.app",
-    messagingSenderId: "10031644603",
-    appId: "1:10031644603:web:afaf01434c65147d988e9e"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
-  db.enablePersistence().catch(() => {});
-
-  function getFamilyCode() {
-    let code = localStorage.getItem("family_code");
-    if (!code) {
-      code = "FAM-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-      localStorage.setItem("family_code", code);
-    }
-    return code;
-  }
-
-  function setFamilyCode(code) {
-    if(!code || !code.trim()) return;
-    localStorage.setItem("family_code", code.trim());
-    window.location.reload();
-  }
-
-  const getCollectionName = () => `data_${getFamilyCode()}`;
-
-  const appStorage = {
-    async get(key, shared) {
-      if (!shared) {
-        const v = localStorage.getItem(key);
-        return v !== null ? { key, value: v, shared } : null;
-      }
-      const doc = await db.collection(getCollectionName()).doc(key).get();
-      if (!doc.exists) return null;
-      return { key, value: doc.data().value, shared };
-    },
-    async set(key, value, shared) {
-      if (!shared) {
-        localStorage.setItem(key, value);
-        return { key, value, shared };
-      }
-      await db.collection(getCollectionName()).doc(key).set({ value, updatedAt: Date.now() });
-      return { key, value, shared };
-    },
-    async delete(key, shared) {
-      if (!shared) {
-        localStorage.removeItem(key);
-        return { key, deleted: true, shared };
-      }
-      await db.collection(getCollectionName()).doc(key).delete();
-      return { key, deleted: true, shared };
-    },
-    async list(prefix, shared) {
-      if (!shared) {
-        const keys = Object.keys(localStorage).filter((k) => !prefix || k.startsWith(prefix));
-        return { keys, prefix, shared };
-      }
-      let q = db.collection(getCollectionName());
-      if (prefix) {
-        q = q
-          .where(firebase.firestore.FieldPath.documentId(), ">=", prefix)
-          .where(firebase.firestore.FieldPath.documentId(), "<", prefix + "\uf8ff");
-      }
-      const snap = await q.get();
-      const keys = snap.docs.map((d) => d.id);
-      return { keys, prefix, shared };
-    }
-  };
-
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
-    });
-  }
-</script>
-
-<!-- Pre-built app bundle (JSX already compiled to plain JS — no Babel at runtime) -->
-<script src="app.js"></script>
+<script type="text/babel" src="app.js"></script>
 </body>
 </html>
