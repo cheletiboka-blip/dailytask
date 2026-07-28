@@ -50,14 +50,14 @@
     },
     {
       "src": "screenshots/desktop-1.png",
-      "sizes": "1858x708",
+      "sizes": "1858x828",
       "type": "image/png",
       "form_factor": "wide",
       "label": "ডেস্কটপ ভিউ - দৈনন্দিন আমল"
     },
     {
       "src": "screenshots/desktop-2.png",
-      "sizes": "1026x826",
+      "sizes": "1884x879",
       "type": "image/png",
       "form_factor": "wide",
       "label": "ডেস্কটপ ভিউ - মাসিক ওভারভিউ"
