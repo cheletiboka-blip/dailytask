@@ -26,7 +26,8 @@ function getFamilyCode() {
 }
 function setFamilyCode(code) {
   if (!code || !code.trim()) return;
-  localStorage.setItem("family_code", code.trim());
+  const normalized = code.trim().toUpperCase();
+  localStorage.setItem("family_code", normalized);
   localStorage.setItem("family_code_is_custom", "1");
   window.location.reload();
 }
@@ -1841,10 +1842,17 @@ function App() {
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
   }
-  function handleSaveCustomFamilyCode() {
-    if (customFamCodeInput.trim()) {
-      setFamilyCode(customFamCodeInput.trim());
-    }
+  async function handleSaveCustomFamilyCode() {
+    const code = customFamCodeInput.trim().toUpperCase();
+    if (!code) return;
+    try {
+      const doc = await db.collection(`data_${code}`).doc("members").get();
+      const msg = doc.exists
+        ? "এই কোডে আগের রেকর্ড পাওয়া গেছে — এতে সুইচ করলে সেই ডাটা ফিরে আসবে। এগিয়ে যাবেন?"
+        : "এই কোডে কোনো পুরনো রেকর্ড নেই — এটি নতুন খালি ফ্যামিলি স্পেস হবে। এগিয়ে যাবেন?";
+      if (!window.confirm(msg)) return;
+    } catch {}
+    setFamilyCode(code);
   }
   function handleGoToArchive() {
     setMonthCursor({
@@ -3192,7 +3200,7 @@ function App() {
     className: "text-[11px] text-slate-500 mb-3"
   }, "একটি অনন্য কোড (যেমন: FAM-KHAN-2026) দিন যেন পরিবারের অন্য সদস্যরা এটি ব্যবহার করে ডাটা সিংক করতে পারে।"), /*#__PURE__*/React.createElement("input", {
     value: customFamCodeInput,
-    onChange: e => setCustomFamCodeInput(e.target.value),
+    onChange: e => setCustomFamCodeInput(e.target.value.toUpperCase()),
     placeholder: "যেমন: FAM-KHAN-2026",
     className: "w-full h-10 border border-slate-200 rounded-xl px-3 text-xs mb-4 outline-none font-bold uppercase text-emerald-900 focus:border-emerald-800"
   }), /*#__PURE__*/React.createElement("div", {
