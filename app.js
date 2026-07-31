@@ -51,13 +51,24 @@ function getFamilyCode() {
   }
   return code;
 }
-// শুধু ইংরেজি অক্ষর, সংখ্যা ও হাইফেন — ৩ থেকে ৩০ ক্যারেক্টার
-const FAMILY_CODE_PATTERN = /^[A-Z0-9-]{3,30}$/;
+const FAMILY_CODE_MIN_LENGTH = 9;
+const FAMILY_CODE_MAX_LENGTH = 30;
+// শুধু যেসব ক্যারেক্টার Firestore-এর path/collection নাম ভাঙতে পারে বা কপি-পেস্টে সমস্যা করে,
+// সেগুলোই বাদ: space, / (path separator), \ , ' এবং " (quoting সমস্যা এড়াতে)।
+// বাকি সব ইংরেজি অক্ষর (ছোট/বড় হাতের), সংখ্যা এবং বিশেষ চিহ্ন (@#*!$%^&()_+= ইত্যাদি) allow।
+const FAMILY_CODE_CHARSET_PATTERN = /^(?!\.+$)(?!__.*__$)[^\s/\\'"]+$/;
+function isFamilyCodeCharsetValid(code) {
+  return FAMILY_CODE_CHARSET_PATTERN.test(code);
+}
 function setFamilyCode(code) {
   if (!code || !code.trim()) return;
-  const normalized = code.trim().toUpperCase();
-  if (!FAMILY_CODE_PATTERN.test(normalized)) {
-    alert("ফ্যামিলি কোডে শুধু ইংরেজি অক্ষর, সংখ্যা এবং হাইফেন (-) ব্যবহার করা যাবে। দৈর্ঘ্য ৩ থেকে ৩০ ক্যারেক্টারের মধ্যে হতে হবে।");
+  const normalized = code.trim();
+  if (normalized.length < FAMILY_CODE_MIN_LENGTH || normalized.length > FAMILY_CODE_MAX_LENGTH) {
+    alert(`ফ্যামিলি কোড ${FAMILY_CODE_MIN_LENGTH} থেকে ${FAMILY_CODE_MAX_LENGTH} ক্যারেক্টারের মধ্যে হতে হবে।`);
+    return;
+  }
+  if (!isFamilyCodeCharsetValid(normalized)) {
+    alert("ফ্যামিলি কোডে স্পেস, / (স্ল্যাশ), \\ (ব্যাকস্ল্যাশ), বা কোটেশন চিহ্ন ( ' \" ) ব্যবহার করা যাবে না।");
     return;
   }
   localStorage.setItem("family_code", normalized);
@@ -1876,14 +1887,14 @@ function App() {
     setTimeout(() => setCopiedCode(false), 2000);
   }
   async function handleSaveCustomFamilyCode() {
-    const code = customFamCodeInput.trim().toUpperCase();
+    const code = customFamCodeInput.trim();
     if (!code) return;
-    if (code.length < 8) {
-      window.alert("কাস্টম ফ্যামিলি কোড কমপক্ষে ৮ ক্যারেক্টার হতে হবে।");
+    if (code.length < FAMILY_CODE_MIN_LENGTH) {
+      window.alert(`কাস্টম ফ্যামিলি কোড কমপক্ষে ${FAMILY_CODE_MIN_LENGTH} ক্যারেক্টার হতে হবে।`);
       return;
     }
-    if (!FAMILY_CODE_PATTERN.test(code)) {
-      window.alert("ফ্যামিলি কোডে শুধু ইংরেজি অক্ষর (A-Z), সংখ্যা (0-9) এবং হাইফেন (-) ব্যবহার করা যাবে।");
+    if (!isFamilyCodeCharsetValid(code)) {
+      window.alert("ফ্যামিলি কোডে স্পেস, / (স্ল্যাশ), \\ (ব্যাকস্ল্যাশ), বা কোটেশন চিহ্ন ( ' \" ) ব্যবহার করা যাবে না। বাকি ছোট/বড় হাতের অক্ষর, সংখ্যা ও বিশেষ চিহ্ন ব্যবহার করা যাবে।");
       return;
     }
     try {
@@ -3239,12 +3250,12 @@ function App() {
     className: "font-bold text-sm mb-1 text-slate-800"
   }, "কাস্টম ফ্যামিলি কোড সেট করুন"), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-500 mb-3"
-  }, "একটি অনন্য কোড দিন (যেমন: FAM-KHAN-2026) যেন পরিবারের অন্য সদস্যরা এটি ব্যবহার করে ডাটা সিংক করতে পারে। শুধু ইংরেজি অক্ষর, সংখ্যা ও হাইফেন (-) ব্যবহার করুন, কমপক্ষে ৮ ক্যারেক্টার।"), /*#__PURE__*/React.createElement("input", {
+  }, "একটি অনন্য কোড দিন (যেমন: Fam-Khan-2026) যেন পরিবারের অন্য সদস্যরা এটি ব্যবহার করে ডাটা সিংক করতে পারে। ছোট/বড় হাতের ইংরেজি অক্ষর, সংখ্যা ও বিশেষ চিহ্ন ব্যবহার করা যাবে (space, /, \\, ' এবং \" ছাড়া), কমপক্ষে ৯ ক্যারেক্টার।"), /*#__PURE__*/React.createElement("input", {
     value: customFamCodeInput,
-    onChange: e => setCustomFamCodeInput(e.target.value.toUpperCase()),
-    placeholder: "যেমন: FAM-KHAN-2026",
+    onChange: e => setCustomFamCodeInput(e.target.value),
+    placeholder: "যেমন: Fam-Khan-2026",
     maxLength: 30,
-    className: "w-full h-10 border border-slate-200 rounded-xl px-3 text-xs mb-4 outline-none font-bold uppercase text-emerald-900 focus:border-emerald-800"
+    className: "w-full h-10 border border-slate-200 rounded-xl px-3 text-xs mb-4 outline-none font-bold text-emerald-900 focus:border-emerald-800"
   }), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2"
   }, /*#__PURE__*/React.createElement("button", {
@@ -3271,7 +3282,7 @@ function App() {
     className: "text-slate-400"
   }))), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-600 leading-relaxed mb-4"
-  }, "পরিবারের সবার অ্যাপে একই ফ্যামিলি কোড সেট করলে সবার আমল ও তথ্যের হিসাব স্বয়ংক্রিয়ভাবে এক জায়গায় সিঙ্ক হবে। কোডে শুধু ইংরেজি অক্ষর, সংখ্যা ও হাইফেন (-) ব্যবহার করা যাবে, কমপক্ষে ৮ ক্যারেক্টার — যত জটিল ও দীর্ঘ কোড, ততই নিরাপদ, কারণ অন্য কেউ অনুমান করে আপনার ডাটা দেখতে পারবে না। নিরাপত্তা ও ব্যক্তিগত গোপনীয়তা বজায় রাখতে কাস্টম কোড সেট করার পর এটি গোপন (Masked) করে রাখা হবে। কোডটি দেখতে ডট টেক্সটের ওপর ট্যাপ বা ক্লিক করুন।"), /*#__PURE__*/React.createElement("button", {
+  }, "পরিবারের সবার অ্যাপে হুবহু একই ফ্যামিলি কোড সেট করলে সবার আমল ও তথ্যের হিসাব স্বয়ংক্রিয়ভাবে এক জায়গায় সিঙ্ক হবে। কোডে ছোট/বড় হাতের ইংরেজি অক্ষর, সংখ্যা ও বিশেষ চিহ্ন ব্যবহার করা যাবে, কমপক্ষে ৯ ক্যারেক্টার — যত জটিল ও দীর্ঘ কোড, ততই নিরাপদ, কারণ অন্য কেউ অনুমান করে আপনার ডাটা দেখতে পারবে না। ⚠️ কোডটি case-sensitive — অর্থাৎ ছোট ও বড় হাতের অক্ষর আলাদা হিসেবে গণ্য হয়, তাই পরিবারের সবাইকে ঠিক একই বানানে (হুবহু case মিলিয়ে) কোডটি বসাতে হবে, নাহলে আলাদা ডাটা স্পেস তৈরি হয়ে যাবে। নিরাপত্তা ও ব্যক্তিগত গোপনীয়তা বজায় রাখতে কাস্টম কোড সেট করার পর এটি গোপন (Masked) করে রাখা হবে। কোডটি দেখতে ডট টেক্সটের ওপর ট্যাপ বা ক্লিক করুন।"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowFamilyCodeInfoModal(false),
     className: "w-full h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
   }, "বুঝেছি"))), showMemberInfoModal && /*#__PURE__*/React.createElement("div", {
