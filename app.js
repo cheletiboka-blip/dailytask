@@ -1882,6 +1882,10 @@ function App() {
       window.alert("কাস্টম ফ্যামিলি কোড কমপক্ষে ৮ ক্যারেক্টার হতে হবে।");
       return;
     }
+    if (!FAMILY_CODE_PATTERN.test(code)) {
+      window.alert("ফ্যামিলি কোডে শুধু ইংরেজি অক্ষর (A-Z), সংখ্যা (0-9) এবং হাইফেন (-) ব্যবহার করা যাবে।");
+      return;
+    }
     try {
       const doc = await db.collection(`data_${code}`).doc("members").get();
       const msg = doc.exists
@@ -3235,10 +3239,11 @@ function App() {
     className: "font-bold text-sm mb-1 text-slate-800"
   }, "কাস্টম ফ্যামিলি কোড সেট করুন"), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-500 mb-3"
-  }, "একটি অনন্য কোড (যেমন: FAM-KHAN-2026) দিন যেন পরিবারের অন্য সদস্যরা এটি ব্যবহার করে ডাটা সিংক করতে পারে।"), /*#__PURE__*/React.createElement("input", {
+  }, "একটি অনন্য কোড দিন (যেমন: FAM-KHAN-2026) যেন পরিবারের অন্য সদস্যরা এটি ব্যবহার করে ডাটা সিংক করতে পারে। শুধু ইংরেজি অক্ষর, সংখ্যা ও হাইফেন (-) ব্যবহার করুন, কমপক্ষে ৮ ক্যারেক্টার।"), /*#__PURE__*/React.createElement("input", {
     value: customFamCodeInput,
     onChange: e => setCustomFamCodeInput(e.target.value.toUpperCase()),
     placeholder: "যেমন: FAM-KHAN-2026",
+    maxLength: 30,
     className: "w-full h-10 border border-slate-200 rounded-xl px-3 text-xs mb-4 outline-none font-bold uppercase text-emerald-900 focus:border-emerald-800"
   }), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2"
@@ -3266,7 +3271,7 @@ function App() {
     className: "text-slate-400"
   }))), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-600 leading-relaxed mb-4"
-  }, "পরিবারের সবার অ্যাপে একই ফ্যামিলি কোড সেট করলে সবার আমল ও তথ্যের হিসাব স্বয়ংক্রিয়ভাবে এক জায়গায় সিঙ্ক হবে। নিরাপত্তা ও ব্যক্তিগত গোপনীয়তা বজায় রাখতে কাস্টম কোড সেট করার পর এটি গোপন (Masked) করে রাখা হবে। কোডটি দেখতে ডট টেক্সটের ওপর ট্যাপ বা ক্লিক করুন।"), /*#__PURE__*/React.createElement("button", {
+  }, "পরিবারের সবার অ্যাপে একই ফ্যামিলি কোড সেট করলে সবার আমল ও তথ্যের হিসাব স্বয়ংক্রিয়ভাবে এক জায়গায় সিঙ্ক হবে। কোডে শুধু ইংরেজি অক্ষর, সংখ্যা ও হাইফেন (-) ব্যবহার করা যাবে, কমপক্ষে ৮ ক্যারেক্টার — যত জটিল ও দীর্ঘ কোড, ততই নিরাপদ, কারণ অন্য কেউ অনুমান করে আপনার ডাটা দেখতে পারবে না। নিরাপত্তা ও ব্যক্তিগত গোপনীয়তা বজায় রাখতে কাস্টম কোড সেট করার পর এটি গোপন (Masked) করে রাখা হবে। কোডটি দেখতে ডট টেক্সটের ওপর ট্যাপ বা ক্লিক করুন।"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowFamilyCodeInfoModal(false),
     className: "w-full h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
   }, "বুঝেছি"))), showMemberInfoModal && /*#__PURE__*/React.createElement("div", {
