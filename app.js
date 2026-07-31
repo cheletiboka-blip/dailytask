@@ -27,6 +27,7 @@ function getFamilyCode() {
 function setFamilyCode(code) {
   if (!code || !code.trim()) return;
   localStorage.setItem("family_code", code.trim());
+  localStorage.setItem("family_code_is_custom", "1");
   window.location.reload();
 }
 const getCollectionName = () => `data_${getFamilyCode()}`;
@@ -107,7 +108,17 @@ const appStorage = {
 };
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
+    navigator.serviceWorker.register("sw.js").then(reg => {
+      reg.addEventListener("updatefound", () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            window.dispatchEvent(new CustomEvent("dt-update-available"));
+          }
+        });
+      });
+    }).catch(() => {});
   });
 }
 const {
@@ -476,6 +487,31 @@ function EditIcon({
     d: "M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
   }));
 }
+function InfoIcon({
+  size,
+  color,
+  className
+}) {
+  return /*#__PURE__*/React.createElement(Icon, {
+    size: size,
+    color: color,
+    className: className
+  }, /*#__PURE__*/React.createElement("circle", {
+    cx: "12",
+    cy: "12",
+    r: "10"
+  }), /*#__PURE__*/React.createElement("line", {
+    x1: "12",
+    y1: "16",
+    x2: "12",
+    y2: "12"
+  }), /*#__PURE__*/React.createElement("line", {
+    x1: "12",
+    y1: "8",
+    x2: "12.01",
+    y2: "8"
+  }));
+}
 function RefreshIcon({
   size,
   color,
@@ -544,6 +580,23 @@ function Loader2({
     y2: "4.93"
   }));
 }
+function ClockIcon({
+  size,
+  color,
+  className
+}) {
+  return /*#__PURE__*/React.createElement(Icon, {
+    size: size,
+    color: color,
+    className: className
+  }, /*#__PURE__*/React.createElement("circle", {
+    cx: "12",
+    cy: "12",
+    r: "9"
+  }), /*#__PURE__*/React.createElement("polyline", {
+    points: "12 7 12 12 15 15"
+  }));
+}
 function useFonts() {
   useEffect(() => {
     const id = "dt-fonts";
@@ -564,7 +617,7 @@ const THEME_PRESETS = [{
 }, {
   id: "pink",
   name: "পিংক",
-  color: "#C0286B"
+  color: "#E0559A"
 }, {
   id: "maroon",
   name: "মেরুন",
@@ -625,28 +678,37 @@ const DEFAULT_DEEN_FIELDS = [{
   label: "ফরজ কাযা নামাজ (কয় ওয়াক্ত?)",
   shortLabel: "ফরজ কাযা",
   type: "count",
-  max: 5
+  max: 5,
+  excusable: true
 }, {
   key: "jamaat",
   label: "জামায়াতে নামাজ (কয় ওয়াক্ত?)",
   shortLabel: "জামায়াতে নামাজ",
   type: "count",
   max: 5,
-  appliesTo: "male"
+  appliesTo: "male",
+  excusable: true
 }, {
   key: "sunnahNafl",
   label: "সুন্নত/নফল নামাজ",
   shortLabel: "সুন্নত/নফল",
-  type: "bool"
+  type: "bool",
+  excusable: true
 }, {
   key: "tahajjud",
-  label: "নফল সিয়াম/ তাহাজ্জুদ",
-  shortLabel: "তাহাজ্জুদ",
+  label: "সিয়াম (ফরজ/নফল) / তাহাজ্জুদ",
+  shortLabel: "সিয়াম/তাহাজ্জুদ",
+  type: "bool",
+  excusable: true
+}, {
+  key: "morningEveningAzkar",
+  label: "সকাল-সন্ধ্যার ও ঘুমানোর সময়ের আমল",
+  shortLabel: "সকাল-সন্ধ্যার আমল",
   type: "bool"
 }, {
   key: "dhikr",
-  label: "ইস্তেগফার/যিকির/দোয়া",
-  shortLabel: "যিকির/দোয়া",
+  label: "ইস্তেগফার/যিকির/দরুদ শরীফ/দু'আ",
+  shortLabel: "যিকির/দু'আ",
   type: "bool"
 }, {
   key: "quranPages",
@@ -731,6 +793,20 @@ function fieldApplies(field, member) {
   if (!member || !member.gender) return true;
   return field.appliesTo === member.gender;
 }
+function isExcused(entry, key) {
+  return !!(entry && entry.excused && entry.excused[key]);
+}
+// Shari'ah note: men have no valid excuse to skip qaza of obligatory (fard)
+// prayers — they remain obligated to make them up later. So the "ওজর"
+// (excuse) option is intentionally unavailable for fardPrayers when the
+// member's gender is male, even though the field is otherwise excusable
+// (e.g. for jamaat, sunnah/nafl, siyam/tahajjud, and for female members'
+// fardPrayers during valid excuse periods).
+function isFieldExcusable(field, member) {
+  if (!field.excusable) return false;
+  if (field.key === "fardPrayers" && member && member.gender === "male") return false;
+  return true;
+}
 const BN_DIGITS = "০১২৩৪৫৬৭৮৯";
 const toBn = n => String(n).replace(/[0-9]/g, d => BN_DIGITS[d]);
 
@@ -744,7 +820,7 @@ function LabelText({
   return parts.map((part, i) => /^[০-৯]+$/.test(part) ? /*#__PURE__*/React.createElement("span", {
     key: i,
     style: {
-      fontFamily: "'IBM Plex Mono', monospace",
+      fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace",
       fontWeight: 700,
       color: "var(--theme-primary)"
     }
@@ -754,11 +830,277 @@ function LabelText({
 }
 const BN_MONTHS = ["জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"];
 const BN_WEEKDAYS = ["রবি", "সোম", "মঙ্গল", "বুধ", "বৃহ", "শুক্র", "শনি"];
+const DAILY_INSPIRATIONS = [{
+  type: "ayat",
+  text: "তোমরা ভয় কর সেদিনকে, যেদিন এক ব্যক্তি থেকে অন্য ব্যক্তি বিন্দুমাত্র উপকৃত হবে না, কারও কাছ থেকে বিনিময় গৃহীত হবে না, কারও সুপারিশ ফলপ্রদ হবে না এবং তারা সাহায্যপ্রাপ্তও হবে না।",
+  ref: "সূরা আল-বাকারাহ: ১২৩"
+}, {
+  type: "ayat",
+  text: "হে মুমিনগণ! তোমরা ধৈর্য ও নামাজের মাধ্যমে সাহায্য প্রার্থনা কর। নিশ্চয়ই আল্লাহ ধৈর্যশীলদের সাথে রয়েছেন।",
+  ref: "সূরা আল-বাকারাহ: ১৫৩"
+}, {
+  type: "ayat",
+  text: "এবং অবশ্যই আমি তোমাদেরকে পরীক্ষা করব কিছুটা ভয়, ক্ষুধা, মাল ও জানের ক্ষতি এবং ফল-ফসল বিনষ্টের মাধ্যমে। তবে সুসংবাদ দাও সবরকারীদের।",
+  ref: "সূরা আল-বাকারাহ: ১৫৫"
+}, {
+  type: "ayat",
+  text: "হে ঈমানদারগণ! তোমরা পরিপূর্ণভাবে ইসলামের অন্তর্ভুক্ত হয়ে যাও এবং শয়তানের পদাঙ্ক অনুসরণ করো না। নিশ্চিতরূপে সে তোমাদের প্রকাশ্য শত্রু।",
+  ref: "সূরা আল-বাকারাহ: ২০৮"
+}, {
+  type: "ayat",
+  text: "যাঁরা দাঁড়িয়ে, বসে ও শায়িত অবস্থায় আল্লাহকে স্মরণ করে এবং আসমান ও জমিন সৃষ্টির বিষয়ে চিন্তা-গবেষণা করে, (তারা বলে) পরওয়ারদেগার! এসব তুমি অনর্থক সৃষ্টি করোনি।",
+  ref: "সূরা আল-ইমরান: ১৯১"
+}, {
+  type: "ayat",
+  text: "আর এমন লোকদের জন্য কোনো ক্ষমা নেই, যারা মন্দ কাজ করতেই থাকে, এমনকি যখন তাদের কারো মাথার উপর মৃত্যু উপস্থিত হয়, তখন বলতে থাকে: আমি এখন তওবা করছি।",
+  ref: "সূরা আন-নিসা: ১৮"
+}, {
+  type: "ayat",
+  text: "যেগুলো সম্পর্কে তোমাদের নিষেধ করা হয়েছে যদি তোমরা সেসব বড় গুনাহগুলো থেকে বেঁচে থাকতে পার, তবে আমি তোমাদের ত্রুটি-বিচ্যুতিগুলো ক্ষমা করে দেব এবং সম্মানজনক স্থানে তোমাদের প্রবেশ করাব।",
+  ref: "সূরা আন-নিসা: ৩১"
+}, {
+  type: "ayat",
+  text: "যে লোক সৎকাজের জন্য কোনো সুপারিশ করবে, তা থেকে সেও একটি অংশ পাবে। আর যে লোক সুপারিশ করবে মন্দ কাজের জন্যে সে তার বোঝারও একটি অংশ পাবে।",
+  ref: "সূরা আন-নিসা: ৮৫"
+}, {
+  type: "ayat",
+  text: "পার্থিব জীবন ক্রীড়া ও কৌতুক ব্যতীত কিছুই নয়। পরকালের আবাস পরহেজগারদের জন্য শ্রেষ্ঠতর।",
+  ref: "সূরা আল-আনআম: ৩২"
+}, {
+  type: "ayat",
+  text: "তোমরা প্রকাশ্য ও প্রচ্ছন্ন গুনাহ পরিত্যাগ কর। নিশ্চয় যারা গুনাহ করেছে, তারা অতিসত্বর তাদের কৃতকর্মের শাস্তি পাবে।",
+  ref: "সূরা আল-আনআম: ১২০"
+}, {
+  type: "ayat",
+  text: "যে একটি সৎকর্ম করবে, সে তার দশগুণ পাবে এবং যে একটি মন্দ কাজ করবে, সে তার সমান শাস্তিই পাবে।",
+  ref: "সূরা আল-আনআম: ১৬০"
+}, {
+  type: "ayat",
+  text: "আপনি বলুন: আমার নামাজ, আমার কোরবানি এবং আমার জীবন ও মরণ বিশ্ব-প্রতিপালক আল্লাহরই জন্যে।",
+  ref: "সূরা আল-আনআম: ১৬২"
+}, {
+  type: "ayat",
+  text: "যারা ঈমানদার, তারা এমন যে, যখন আল্লাহর নাম নেওয়া হয় তখন তাদের অন্তর ভীত হয়ে পড়ে।",
+  ref: "সূরা আল-আনফাল: ০২"
+}, {
+  type: "ayat",
+  text: "অবশ্যই যেসব লোক আমার সাক্ষাৎ লাভের আশা রাখে না এবং পার্থিব জীবন নিয়েই উৎফুল্ল রয়েছে... এমন লোকদের ঠিকানা হলো আগুন।",
+  ref: "সূরা ইউনুস: ০৭-০৮"
+}, {
+  type: "ayat",
+  text: "মুমিনগণ সফলকাম হয়ে গেছে, যারা নিজেদের নামাজে বিনয়-নম্র; যারা অনর্থক কথাবার্তায় নির্লিপ্ত, যারা জাকাত দান করে থাকে।",
+  ref: "সূরা আল-মুমিনুন: ১-৫"
+}, {
+  type: "ayat",
+  text: "হে নবী! মুমিন পুরুষদের বলে দাও তারা যেন নিজেদের দৃষ্টি সংযত করে রাখে এবং নিজেদের লজ্জাস্থান সমূহের হেফাজত করে।",
+  ref: "সূরা আন-নূর: ৩০"
+}, {
+  type: "ayat",
+  text: "তোমাদের এ কী অবস্থা, প্রত্যেক উঁচু জায়গায় অনর্থক একটি ইমারত বানিয়ে ফেলেছ এবং বড় বড় প্রাসাদ নির্মাণ করছ, যেন তোমরা চিরকাল থাকবে?",
+  ref: "সূরা আশ-শুআরা: ১২৮-১২৯"
+}, {
+  type: "ayat",
+  text: "লোকেরা কি মনে করে রেখেছে, 'আমরা ঈমান এনেছি' কেবলমাত্র এ কথাটুকু বললেই তাদেরকে ছেড়ে দেয়া হবে, আর পরীক্ষা করা হবে না?",
+  ref: "সূরা আল-আনকাবুত: ২-৩"
+}, {
+  type: "ayat",
+  text: "নির্দেশ দিয়েছি যে, আমার প্রতি ও তোমার পিতা-মাতার প্রতি কৃতজ্ঞ হও। অবশেষে আমারই নিকট ফিরে আসতে হবে।",
+  ref: "সূরা লোকমান: ১৪"
+}, {
+  type: "ayat",
+  text: "বলুন, যারা জানে এবং যারা জানে না; তারা কি সমান হতে পারে? চিন্তাভাবনা কেবল তারাই করে, যারা বুদ্ধিমান।",
+  ref: "সূরা আজ-জুমার: ০৯"
+}, {
+  type: "ayat",
+  text: "মুমিনগণ, তোমরা অনেক ধারণা থেকে বেঁচে থাকো। নিশ্চয় কতক ধারণা গুনাহ এবং গোপনীয় বিষয় সন্ধান করো না।",
+  ref: "সূরা আল-হুজরাত: ১২"
+}, {
+  type: "ayat",
+  text: "মুমিনগণ! তোমরা আল্লাহ তাআলার কাছে তওবা কর; আন্তরিক তওবা।",
+  ref: "সূরা আত-তাহরীম: ০৮"
+}, {
+  type: "hadith",
+  text: "আল্লাহ যার মঙ্গল চান, তাকে দুঃখ-কষ্টে ফেলেন।",
+  ref: "রিয়াদুস সালেহীন: ৪০; সহীহ বুখারী: ৫৬৪৫"
+}, {
+  type: "hadith",
+  text: "দুটি কালেমা আছে, যেগুলো দয়াময়ের কাছে অতি প্রিয়, মুখে উচ্চারণ করা খুবই সহজ, দাঁড়িপাল্লায় অত্যন্ত ভারী: 'সুবহানাল্লাহি ওয়া বিহামদিহি সুবহানাল্লাহিল আজীম'।",
+  ref: "সহীহ বুখারী: ৬৪৬"
+}, {
+  type: "hadith",
+  text: "কুরআনের তিরিশ আয়াতবিশিষ্ট একটি সূরা এমন আছে, যা তার পাঠকারীর জন্য সুপারিশ করবে... সেটা হচ্ছে 'সূরা মুলক'।",
+  ref: "আবু দাউদ: ১৪০০"
+}, {
+  type: "hadith",
+  text: "গোটা দুনিয়াই সম্পদে পরিপূর্ণ। এর মধ্যে সবচেয়ে উত্তম সম্পদ হলো পুণ্যবতী স্ত্রী।",
+  ref: "সহীহ মুসলিম; রিয়াদুস স্বা-লিহীন: ২৮৪"
+}, {
+  type: "hadith",
+  text: "মুমিনদের মধ্যে সবার চেয়ে পূর্ণ মুমিন ঐ ব্যক্তি যে চরিত্রে সবার চেয়ে সুন্দর।",
+  ref: "তিরমিযী; রিয়াদুস স্বা-লিহীন: ২৮৩"
+}, {
+  type: "hadith",
+  text: "উত্তম স্ত্রী সে, যার প্রতি দৃষ্টিপাত করলে তোমাকে আনন্দিত করে, আদেশ করলে আনুগত্য করে, তুমি দূরে থাকলে তার নিজের ব্যাপারে এবং তোমার সম্পদের ব্যাপারে তোমার অধিকার রক্ষা করে।",
+  ref: "তাফসীরে তবারী: ৯৩২৯; মুসনাদে ত্বয়ালিসী: ২৩২৫"
+}, {
+  type: "hadith",
+  text: "যখনই কোনো পুরুষ কোনো মহিলার সাথে নির্জনতা অবলম্বন করে, তখনই শয়তান তাদের তৃতীয় সাথী হয়।",
+  ref: "তিরমিযী: ৯৩৪"
+}, {
+  type: "hadith",
+  text: "আমার গত হওয়ার পরে পুরুষের পক্ষে নারীর চেয়ে অধিক ক্ষতিকর কোনো ফিতনা অন্য কিছু ছেড়ে যাচ্ছি না।",
+  ref: "সহীহ বুখারী: ৫০৯৬"
+}, {
+  type: "hadith",
+  text: "নারীদের জন্য ঘরই উত্তম।",
+  ref: "আবু দাউদ: ৫৭৬"
+}, {
+  type: "hadith",
+  text: "হে নারীরা! তোমরা দান-সদকা কর। কারণ আমি অধিকাংশ জাহান্নামি দেখেছি তোমাদের নারীদেরকে... কারণ তোমরা স্বামীর প্রতি অকৃতজ্ঞতা প্রকাশ কর।",
+  ref: "সহীহ বুখারী: ১/৪৪"
+}, {
+  type: "hadith",
+  text: "নারী যখন পাঁচ ওয়াক্ত নামাজ আদায় করবে, রমজান মাসের রোজা রাখবে, নিজ লজ্জাস্থানের হেফাজত করবে এবং স্বামীর আনুগত্য করবে তখন তাকে বলা হবে, যে দরজা দিয়ে ইচ্ছা জান্নাতে প্রবেশ কর।",
+  ref: "মুসনাদে আহমাদ: ১৬৬১"
+}, {
+  type: "hadith",
+  text: "কেবলমাত্র দুটি বিষয়ে ঈর্ষা করা যায়: ১) ঐ ব্যক্তি যাকে আল্লাহ কুরআন শিক্ষা দিয়েছেন এবং সে দিবারাত্রি তা তিলাওয়াত ও আমল করে এবং ২) ঐ ব্যক্তি যাকে আল্লাহ সম্পদ দিয়েছেন এবং সে দিবারাত্রি তা দান করে।",
+  ref: "সহীহ বুখারী: ৫০২৫; সহীহ মুসলিম: ৮১৫"
+}, {
+  type: "hadith",
+  text: "দোজখীরা হলো: প্রত্যেক অহঙ্কারী, সীমালঙ্ঘনকারী, অবিনয়ী ও উদ্ধত লোক।",
+  ref: "সহীহ বুখারী; সহীহ মুসলিম"
+}, {
+  type: "hadith",
+  text: "চরম সর্বনাশ ঐ ব্যক্তির জন্য যে মানুষকে হাসানোর উদ্দেশ্যে মিথ্যা কথা বলে থাকে।",
+  ref: "তিরমিযী: ২৩১৫"
+}, {
+  type: "hadith",
+  text: "যে ব্যক্তি গণকের নিকট এসে কোনো বিষয়ে প্রশ্ন করে, তার চল্লিশ দিনের নামাজ কবুল করা হয় না।",
+  ref: "সহীহ মুসলিম: ২২৩০"
+}, {
+  type: "hadith",
+  text: "মানুষ দুনিয়াতে যে চরিত্রের মানুষকে ভালোবাসে, কিয়ামতে সে তারই সাথী হবে।",
+  ref: "রিয়াদুস স্বা-লিহীন: ৩৭২"
+}, {
+  type: "hadith",
+  text: "প্রকৃত বীর সে নয়, যে কাউকে কুস্তিতে হারিয়ে দেয়। বরং সেই আসল বীর, যে রাগের সময় নিজেকে নিয়ন্ত্রণ করতে পারে।",
+  ref: "সহীহ বুখারী: ৬১১৪"
+}, {
+  type: "hadith",
+  text: "যে ব্যক্তি চায় যে তার রিজিক প্রশস্ত হোক এবং আয়ু বৃদ্ধি হোক, সে যেন তার আত্মীয়তার সম্পর্ক অক্ষুণ্ণ রাখে।",
+  ref: "সহীহ বুখারী: ২০৬৭"
+}, {
+  type: "quote",
+  text: "হয়ত একটি ক্ষুদ্র কাজ অনেক বিশাল হয়ে যায় কাজটির পেছনে করা নিয়তের কারণে এবং হয়ত অনেক বড় একটা কাজ একদমই তুচ্ছ হয়ে যায় কাজটির পেছনে করা নিয়তের কারণে।",
+  ref: "আবদুল্লাহ ইবনে মুবারাক (রাহিমাহুল্লাহ)"
+}, {
+  type: "quote",
+  text: "আল্লাহর ওপর নির্ভর করে আপনি যা-ই করবেন তা কখনই কঠিন হবে না, এবং আপনার নিজের ওপর নির্ভর করে আপনি যা-ই করবেন তা কখনই সহজ হবে না।",
+  ref: "ইবনে আতাউল্লাহ আল-ইসকান্দারি (রাহিমাহুল্লাহ)"
+}, {
+  type: "quote",
+  text: "একটি নোংরা পোশাকের জন্য সুগন্ধির চাইতে সাবানের প্রয়োজনীয়তা অনেক বেশি (তসবিহ পাঠের চেয়ে ইস্তিগফারের গুরুত্ব বোঝাতে)।",
+  ref: "ইমাম ইবনে আল-জাওজি (রাহিমাহুল্লাহ)"
+}, {
+  type: "quote",
+  text: "মুনাফিকের জ্ঞান তার কথাবার্তার মাঝে, মুমিনের জ্ঞান তার কাজের মাঝে।",
+  ref: "আবদুল্লাহ ইবনে আল-মুতাজ"
+}, {
+  type: "quote",
+  text: "নিজেকে যতই গভীর করে লক্ষ্য করবেন এবং বুঝতে পারবেন, ততই আপনি অন্যদের প্রতি কম বিচারপ্রবণ হবেন।",
+  ref: "তারিক রামাদান"
+}, {
+  type: "quote",
+  text: "নিজেকে জোর করে বিনয়ী করুন যতক্ষণ না পর্যন্ত তা আপনার সহজাত স্বভাব হিসেবে প্রতিষ্ঠিত হয়।",
+  ref: "শাইখ হামজা ইউসুফ"
+}, {
+  type: "quote",
+  text: "আধ্যাত্মিকতা অর্জনের ব্যাপারটাই হলো নিজের নফসের সাথে ক্রমাগত জিহাদ করা।",
+  ref: "তারিক রামাদান"
+}, {
+  type: "quote",
+  text: "আপনি যখন কাউকে সাহায্য করার সুযোগ পেয়ে থাকেন, তখন আনন্দিত হোন এইজন্য যে আল্লাহ ওই ব্যক্তির দু'আর সাড়া আপনার মাধ্যমেই দিচ্ছেন।",
+  ref: "নুমান আলী খান"
+}, {
+  type: "quote",
+  text: "একাকী হয়ে যাওয়ার অর্থ হলো তুমি খারাপ সঙ্গ পরিত্যাগ করেছ। কিন্তু একজন ভালো বন্ধু থাকা একাকীত্বের চাইতে উত্তম।",
+  ref: "উমর ইবনুল খাত্তাব (রাদিয়াল্লাহু আনহু)"
+}, {
+  type: "quote",
+  text: "নারীদের সীমাবদ্ধতাগুলোর ব্যাপারে ধৈর্য ধারণ করুন। দাম্পত্য জীবনকে ক্ষতিগ্রস্ত করে এমন ভুলগুলো ছাড়া অন্যগুলোকে উপেক্ষা করুন।",
+  ref: "শাইখ সালিহ আল-ফাওজান"
+}, {
+  type: "quote",
+  text: "নিজের দোষ-ত্রুটি যে অন্যদের চেয়ে ভালো জানে; তার জন্য রয়েছে সুসংবাদ।",
+  ref: "ইবনে হাজম (রাহিমাহুল্লাহ)"
+}, {
+  type: "quote",
+  text: "যে কথা ভেবে আমার অন্তর প্রশান্ত হয় তা হলো আমার জন্য যা নির্ধারিত আছে তা কখনো আমাকে ছেড়ে যাবে না এবং যা কিছু আমার পাওয়া হয় না তা কখনো আমার জন্য নির্ধারিত ছিল না।",
+  ref: "ইমাম শাফিঈ (রাহিমাহুল্লাহ)"
+}, {
+  type: "quote",
+  text: "তাহাজ্জুদের সময়ে করা দু'আ হলো এমন একটি তীরের মতন যা লক্ষ্যভ্রষ্ট হয় না।",
+  ref: "ইমাম শাফিঈ (রাহিমাহুল্লাহ)"
+}, {
+  type: "quote",
+  text: "একজন বান্দার জন্য সবচেয়ে জঘন্য পাপগুলোর একটি হলো তার নিজের পাপকাজগুলোকে ছোট করে দেখা।",
+  ref: "মুহাম্মাদ বিন আবু বকর আস-সিদ্দিক (রাদিয়াল্লাহু আনহু)"
+}, {
+  type: "quote",
+  text: "ভরপেট খাওয়ার ব্যাপারে সতর্ক হোন কেননা এটা অন্তরকে কঠিন করে দেয়। মাত্রাতিরিক্ত হাসাহাসিতে অন্তর মরে যায়।",
+  ref: "ইমাম সুফিয়ান আস-সাওরি (রাহিমাহুল্লাহ)"
+}, {
+  type: "quote",
+  text: "আপনি যদি একটি জাতিকে কোনো রকম যুদ্ধ ছাড়াই ধ্বংস করে দিতে চান, তাহলে তাদের তরুণ প্রজন্মের মাঝে অশ্লীলতা আর ব্যভিচারের প্রচলনের ব্যবস্থা করে দিন।",
+  ref: "সুলতান সালাহ আদ-দ্বীন ইউসুফ আইয়ুবী (রহিমাহুল্লাহ)"
+}, {
+  type: "quote",
+  text: "সে কী পেল যে আল্লাহকে হারালো? সে কী হারালো যে আল্লাহকে পেল?",
+  ref: "ইবনে আতাউল্লাহ আল-ইসকান্দারি (রাহিমাহুল্লাহ)"
+}, {
+  type: "quote",
+  text: "ইমাম আহমাদকে তাঁর ছেলে প্রশ্ন করলেন, 'বাবা, আমরা কবে শান্তি পাবো?' তিনি উত্তর দিলেন, 'জান্নাতে আমাদের প্রথম পদচিহ্নটি রাখার মুহূর্তটি থেকেই'।",
+  ref: "ইমাম আহমাদ (রাহিমাহুল্লাহ)"
+}, {
+  type: "quote",
+  text: "অনেক মানুষ দেখেছি যাদের জড়িয়ে রাখার মতন কোনো কাপড় ছিল না, অনেক কাপড় দেখেছি যা তাদের জড়িয়ে রেখেছিল কিন্তু তারা মানুষ ছিল না।",
+  ref: "জালালুদ্দিন রুমী (রাহিমাহুল্লাহ)"
+}];
+const AYAT_LIST = DAILY_INSPIRATIONS.filter(i => i.type === "ayat");
+const HADITH_LIST = DAILY_INSPIRATIONS.filter(i => i.type === "hadith");
+const QUOTE_LIST = DAILY_INSPIRATIONS.filter(i => i.type === "quote");
+const INSPIRATION_TYPE_CYCLE = [AYAT_LIST, HADITH_LIST, QUOTE_LIST];
+function getDailyInspiration(date) {
+  const start = new Date(date.getFullYear(), 0, 0);
+  const diff = date - start;
+  const dayOfYear = Math.floor(diff / 86400000);
+  const typeList = INSPIRATION_TYPE_CYCLE[dayOfYear % 3];
+  const idx = Math.floor(dayOfYear / 3) % typeList.length;
+  return typeList[idx];
+}
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
 function dateKey(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+function formatBnDateTime(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  let hours = d.getHours();
+  const minutes = pad2(d.getMinutes());
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  return `${toBn(d.getDate())} ${BN_MONTHS[d.getMonth()]} ${toBn(d.getFullYear())}, ${toBn(hours)}:${toBn(minutes)} ${ampm}`;
+}
+function isFutureDate(d) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const compare = new Date(d);
+  compare.setHours(0, 0, 0, 0);
+  return compare.getTime() > today.getTime();
 }
 function monthPrefix(year, month0) {
   return `${year}-${pad2(month0 + 1)}`;
@@ -766,12 +1108,38 @@ function monthPrefix(year, month0) {
 function daysInMonth(year, month0) {
   return new Date(year, month0 + 1, 0).getDate();
 }
+function isLastDayOfMonth(d) {
+  return d.getDate() === daysInMonth(d.getFullYear(), d.getMonth());
+}
+
+// Approximate Hijri (tabular Islamic calendar) conversion — accurate within ~1 day
+// of moon-sighting-based calendars used locally; for general reference only.
+const HIJRI_MONTHS_BN = ["মুহাররম", "সফর", "রবিউল আউয়াল", "রবিউস সানি", "জমাদিউল আউয়াল", "জমাদিউস সানি", "রজব", "শাবান", "রমজান", "শাওয়াল", "জিলক্বদ", "জিলহজ্জ"];
+function gregorianToJD(year, month, day) {
+  return Math.floor(1461 * (year + 4800 + Math.floor((month - 14) / 12)) / 4) + Math.floor(367 * (month - 2 - 12 * Math.floor((month - 14) / 12)) / 12) - Math.floor(3 * Math.floor((year + 4900 + Math.floor((month - 14) / 12)) / 100) / 4) + day - 32075;
+}
+function islamicToJD(year, month, day) {
+  return day + Math.ceil(29.5 * (month - 1)) + (year - 1) * 354 + Math.floor((3 + 11 * year) / 30) + 1948440 - 1;
+}
+function getHijriDate(date) {
+  const jd = gregorianToJD(date.getFullYear(), date.getMonth() + 1, date.getDate());
+  const adjustedJd = Math.floor(jd) + 0.5;
+  const year = Math.floor((30 * (adjustedJd - 1948440) + 10646) / 10631);
+  const month = Math.min(12, Math.ceil((adjustedJd - (29 + islamicToJD(year, 1, 1))) / 29.5) + 1);
+  const day = Math.floor(adjustedJd - islamicToJD(year, month, 1) + 1);
+  return {
+    day,
+    month: HIJRI_MONTHS_BN[month - 1],
+    year
+  };
+}
 function dailyScore(entry, member, allFields) {
   if (!entry) return null;
   let sum = 0;
   let count = 0;
   for (const f of allFields) {
     if (!fieldApplies(f, member)) continue;
+    if (isFieldExcusable(f, member) && isExcused(entry, f.key)) continue;
     count += 1;
     if (f.type === "bool") {
       sum += entry[f.key] ? 1 : 0;
@@ -797,14 +1165,25 @@ function scoreColor(score) {
 }
 function fieldPercent(field, monthEntries, totalDays, member) {
   if (!fieldApplies(field, member)) return null;
+  const excusableHere = isFieldExcusable(field, member);
+  let effectiveDays = totalDays;
+  if (excusableHere) {
+    let excusedDays = 0;
+    for (let d = 1; d <= totalDays; d++) {
+      if (isExcused(monthEntries[pad2(d)], field.key)) excusedDays += 1;
+    }
+    effectiveDays = totalDays - excusedDays;
+  }
+  if (effectiveDays <= 0) return null;
   let hit = 0;
   if (field.type === "count") {
     let sum = 0;
     for (let d = 1; d <= totalDays; d++) {
       const e = monthEntries[pad2(d)];
+      if (excusableHere && isExcused(e, field.key)) continue;
       sum += Math.min(field.max, Number(e?.[field.key]) || 0);
     }
-    return Math.round(sum / (totalDays * field.max) * 100);
+    return Math.round(sum / (effectiveDays * field.max) * 100);
   }
   if (field.type === "number" && field.target) {
     let sum = 0;
@@ -816,11 +1195,12 @@ function fieldPercent(field, monthEntries, totalDays, member) {
   }
   for (let d = 1; d <= totalDays; d++) {
     const e = monthEntries[pad2(d)];
+    if (excusableHere && isExcused(e, field.key)) continue;
     if (!e) continue;
     if (field.type === "bool" && e[field.key]) hit += 1;
     if (field.type === "number" && !field.target && Number(e[field.key]) > 0) hit += 1;
   }
-  return Math.round(hit / totalDays * 100);
+  return Math.round(hit / effectiveDays * 100);
 }
 function calculateStreak(monthEntries, member, allFields, cursorYear, cursorMonth0) {
   let streak = 0;
@@ -914,6 +1294,46 @@ async function loadEntry(memberId, key) {
 async function saveEntry(memberId, key, data) {
   await appStorage.set(`entry:${memberId}:${key}`, JSON.stringify(data), true);
 }
+function entryDocId(memberId, key) {
+  return `entry:${memberId}:${key}`;
+}
+// Edit History / Data Integrity: before overwriting a day's entry with a new
+// edit, the previous saved version is archived into a "history" subcollection
+// under that day's document. Only the last 5 versions are kept per day —
+// older ones are pruned right after each push so the subcollection never
+// grows unbounded.
+async function pushEntryHistory(memberId, key, oldData) {
+  try {
+    const histRef = db.collection(getCollectionName()).doc(entryDocId(memberId, key)).collection("history");
+    await histRef.add({
+      value: JSON.stringify(oldData),
+      editedAt: Date.now()
+    });
+    const snap = await histRef.orderBy("editedAt", "desc").get();
+    if (snap.size > 5) {
+      const excess = snap.docs.slice(5);
+      const batch = db.batch();
+      excess.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch {
+    // History is a best-effort convenience layer — a failure here should
+    // never block the actual save of the day's entry.
+  }
+}
+async function fetchEntryHistory(memberId, key) {
+  try {
+    const histRef = db.collection(getCollectionName()).doc(entryDocId(memberId, key)).collection("history");
+    const snap = await histRef.orderBy("editedAt", "desc").limit(5).get();
+    return snap.docs.map(d => ({
+      id: d.id,
+      editedAt: d.data().editedAt,
+      value: d.data().value
+    }));
+  } catch {
+    return [];
+  }
+}
 async function loadMonthEntries(memberId, year, month0) {
   const prefix = `entry:${memberId}:${monthPrefix(year, month0)}`;
   try {
@@ -991,7 +1411,7 @@ function CountStepper({
   }, "−"), /*#__PURE__*/React.createElement("span", {
     className: "w-8 text-center font-bold text-sm",
     style: {
-      fontFamily: "'IBM Plex Mono', monospace",
+      fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace",
       color: "#16302B"
     }
   }, toBn(v)), /*#__PURE__*/React.createElement("button", {
@@ -1024,14 +1444,14 @@ function NumberField({
     className: "w-16 h-9 rounded-xl border px-2 text-right outline-none font-bold text-sm bg-slate-50 focus:bg-white transition-all",
     style: {
       borderColor: "#D8DED3",
-      fontFamily: "'IBM Plex Mono', monospace",
+      fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace",
       color: "#16302B"
     }
   }), target ? /*#__PURE__*/React.createElement("span", {
     className: "text-xs font-semibold",
     style: {
       color: "#8A9A8F",
-      fontFamily: "'IBM Plex Mono', monospace"
+      fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace"
     }
   }, "/", toBn(target)) : null);
 }
@@ -1169,11 +1589,43 @@ function App() {
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [archiveYear, setArchiveYear] = useState(() => new Date().getFullYear());
   const [archiveMonth0, setArchiveMonth0] = useState(() => new Date().getMonth());
+  const [isCustomFamilyCode, setIsCustomFamilyCode] = useState(() => {
+    try {
+      return localStorage.getItem("family_code_is_custom") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [showFamilyCodeInfoModal, setShowFamilyCodeInfoModal] = useState(false);
+  const [showMemberInfoModal, setShowMemberInfoModal] = useState(false);
+  const [showExcuseInfoModal, setShowExcuseInfoModal] = useState(false);
+  const [showWeeklyInfoModal, setShowWeeklyInfoModal] = useState(false);
+  const [showMeetingInfoModal, setShowMeetingInfoModal] = useState(false);
   const [customFamCodeInput, setCustomFamCodeInput] = useState("");
   const [feedbackMsg, setFeedbackMsg] = useState("");
   const [feedbackSending, setFeedbackSending] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState(null); // null | "sent" | "error"
   const [copiedCode, setCopiedCode] = useState(false);
+  const [codeRevealed, setCodeRevealed] = useState(false);
+  const originalEntryRef = useRef(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyList, setHistoryList] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const touchStartXRef = useRef(null);
+  function handleDateTouchStart(e) {
+    touchStartXRef.current = e.touches[0].clientX;
+  }
+  function handleDateTouchEnd(e) {
+    if (touchStartXRef.current === null) return;
+    const deltaX = e.changedTouches[0].clientX - touchStartXRef.current;
+    touchStartXRef.current = null;
+    if (Math.abs(deltaX) < 40) return; // ignore small taps/scrolls
+    setViewDate(d => {
+      const n = new Date(d);
+      n.setDate(n.getDate() + (deltaX < 0 ? 1 : -1));
+      return n;
+    });
+  }
   useEffect(() => {
     (async () => {
       const m = await loadMembers();
@@ -1195,6 +1647,55 @@ function App() {
       }
     })();
   }, []);
+  const [recoveryMessage, setRecoveryMessage] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [weeklyReminderBanner, setWeeklyReminderBanner] = useState(false);
+  const [monthlyReminderBanner, setMonthlyReminderBanner] = useState(false);
+  useEffect(() => {
+    const handler = () => setUpdateAvailable(true);
+    window.addEventListener("dt-update-available", handler);
+    return () => window.removeEventListener("dt-update-available", handler);
+  }, []);
+  useEffect(() => {
+    const lastActive = localStorage.getItem("last_active_date");
+    const todayKey = dateKey(new Date());
+    if (!lastActive) {
+      // First-ever visit — just start tracking, don't show the message.
+      localStorage.setItem("last_active_date", todayKey);
+      return;
+    }
+    const gapDays = Math.round((new Date(todayKey) - new Date(lastActive)) / 86400000);
+    const dismissedFor = localStorage.getItem("recovery_dismissed_on");
+    if (gapDays >= 3 && dismissedFor !== todayKey) {
+      setRecoveryMessage(true);
+    }
+  }, []);
+  useEffect(() => {
+    function checkReminders() {
+      const now = new Date();
+      const todayKey = dateKey(now);
+      const hour = now.getHours();
+      const weeklyDismissed = localStorage.getItem("weekly_reminder_dismissed_on");
+      if (now.getDay() === 4 && hour >= 19 && weeklyDismissed !== todayKey) {
+        setWeeklyReminderBanner(true);
+      }
+      const monthlyDismissed = localStorage.getItem("monthly_reminder_dismissed_on");
+      if (isLastDayOfMonth(now) && hour >= 17 && monthlyDismissed !== todayKey) {
+        setMonthlyReminderBanner(true);
+      }
+    }
+    checkReminders();
+    const interval = setInterval(checkReminders, 60000);
+    return () => clearInterval(interval);
+  }, []);
+  function dismissWeeklyReminder() {
+    localStorage.setItem("weekly_reminder_dismissed_on", dateKey(new Date()));
+    setWeeklyReminderBanner(false);
+  }
+  function dismissMonthlyReminder() {
+    localStorage.setItem("monthly_reminder_dismissed_on", dateKey(new Date()));
+    setMonthlyReminderBanner(false);
+  }
   const allFields = useMemo(() => {
     return [...DEFAULT_DEEN_FIELDS, ...DEFAULT_DUNIYA_FIELDS, ...customFields];
   }, [customFields]);
@@ -1211,6 +1712,7 @@ function App() {
     if (!selectedId) return;
     loadEntry(selectedId, dateKey(viewDate)).then(data => {
       setEntry(data || {});
+      originalEntryRef.current = data || null;
     });
   }, [selectedId, viewDate]);
 
@@ -1366,7 +1868,8 @@ function App() {
         body: JSON.stringify({
           access_key: WEB3FORMS_ACCESS_KEY,
           subject: "Daily Task App — নতুন পরামর্শ",
-          message: feedbackMsg
+          message: feedbackMsg,
+          family_code: getFamilyCode()
         })
       });
       const result = await res.json();
@@ -1510,16 +2013,38 @@ function App() {
     }
   }
   function updateField(key, value) {
+    if (isFutureDate(viewDate)) return;
     setEntry(prev => ({
       ...prev,
       [key]: value
     }));
   }
+  function updateExcuse(key, value) {
+    if (isFutureDate(viewDate)) return;
+    setEntry(prev => ({
+      ...prev,
+      excused: {
+        ...(prev.excused || {}),
+        [key]: value
+      }
+    }));
+  }
   async function handleSave() {
-    if (!selectedId) return;
+    if (!selectedId || isFutureDate(viewDate)) return;
     setSaving(true);
     try {
-      await saveEntry(selectedId, dateKey(viewDate), entry);
+      const key = dateKey(viewDate);
+      if (originalEntryRef.current) {
+        await pushEntryHistory(selectedId, key, originalEntryRef.current);
+      }
+      const toSave = {
+        ...entry,
+        lastEditedAt: Date.now()
+      };
+      await saveEntry(selectedId, key, toSave);
+      originalEntryRef.current = toSave;
+      setEntry(toSave);
+      localStorage.setItem("last_active_date", dateKey(new Date()));
       setSavedTick(true);
       setTimeout(() => setSavedTick(false), 1600);
       setMonthRefreshKey(k => k + 1);
@@ -1529,7 +2054,38 @@ function App() {
       setSaving(false);
     }
   }
+  async function openHistoryModal() {
+    if (!selectedId) return;
+    setShowHistoryModal(true);
+    setLoadingHistory(true);
+    try {
+      const list = await fetchEntryHistory(selectedId, dateKey(viewDate));
+      setHistoryList(list);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+  function restoreHistoryVersion(versionValue) {
+    try {
+      const restored = JSON.parse(versionValue);
+      setEntry(restored);
+      setShowHistoryModal(false);
+    } catch {
+      alert("এই সংস্করণটি পুনরুদ্ধার করতে সমস্যা হয়েছে।");
+    }
+  }
   const streak = useMemo(() => calculateStreak(monthEntries, selectedMember, allFields, monthCursor.year, monthCursor.month0), [monthEntries, selectedMember, allFields, monthCursor]);
+  const [milestoneToast, setMilestoneToast] = useState(null);
+  useEffect(() => {
+    if (!selectedId || !streak) return;
+    const MILESTONES = [7, 30, 100, 365];
+    const hit = MILESTONES.find(m => streak === m);
+    if (!hit) return;
+    const seenKey = `milestone_seen_${selectedId}_${hit}`;
+    if (localStorage.getItem(seenKey)) return;
+    localStorage.setItem(seenKey, "1");
+    setMilestoneToast(hit);
+  }, [streak, selectedId]);
   const monthStats = useMemo(() => {
     const total = daysInMonth(monthCursor.year, monthCursor.month0);
     let filled = 0;
@@ -1652,6 +2208,14 @@ function App() {
             color: "#ccc"
           }
         }, "—");
+        if (isFieldExcusable(f, selectedMember) && isExcused(e, f.key)) return /*#__PURE__*/React.createElement("td", {
+          key: f.key,
+          style: {
+            color: "#9A8A5C",
+            fontStyle: "italic",
+            fontSize: "7px"
+          }
+        }, "ওজর");
         if (!e) return /*#__PURE__*/React.createElement("td", {
           key: f.key
         });
@@ -1875,7 +2439,10 @@ function App() {
   }, "আমল ও পারিবারিক ট্র্যাকার"))), /*#__PURE__*/React.createElement("div", {
     className: "relative"
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => setIsMenuOpen(!isMenuOpen),
+    onClick: () => {
+      setIsMenuOpen(!isMenuOpen);
+      setCodeRevealed(!isCustomFamilyCode);
+    },
     className: "flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-white bg-white/15 hover:bg-white/20 border border-white/20 backdrop-blur-md transition-all shadow-sm active:scale-95"
   }, /*#__PURE__*/React.createElement(MenuIcon, {
     size: 16
@@ -1890,20 +2457,35 @@ function App() {
   }, /*#__PURE__*/React.createElement("div", {
     className: "px-4 py-2 border-b border-slate-100 bg-slate-50/70"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] font-bold text-slate-400 uppercase tracking-wider"
-  }, "ফ্যামিলি কোড"), /*#__PURE__*/React.createElement("div", {
-    className: "font-bold text-emerald-900 text-sm flex items-center justify-between mt-0.5"
+    className: "flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider"
+  }, /*#__PURE__*/React.createElement("span", null, "ফ্যামিলি কাস্টম কোড"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setShowFamilyCodeInfoModal(true);
+    },
+    className: "text-slate-400 hover:text-emerald-700",
+    title: "তথ্য"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 12
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "font-bold text-emerald-900 text-sm flex items-center justify-between mt-1"
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: () => isCustomFamilyCode && setCodeRevealed(v => !v),
+    className: "inline-block" + (isCustomFamilyCode ? " cursor-pointer" : ""),
+    title: isCustomFamilyCode ? codeRevealed ? "লুকাতে ট্যাপ করুন" : "দেখতে ট্যাপ করুন" : undefined
   }, /*#__PURE__*/React.createElement("span", {
-    className: "tracking-wide"
-  }, getFamilyCode()), /*#__PURE__*/React.createElement("button", {
+    className: "tracking-wide select-none"
+  }, isCustomFamilyCode && !codeRevealed ? "••••••••" : getFamilyCode())), /*#__PURE__*/React.createElement("button", {
+    type: "button",
     onClick: () => {
       setShowFamilyCodeModal(true);
       setIsMenuOpen(false);
     },
-    className: "text-slate-500 hover:text-emerald-800 p-0.5",
+    className: "text-slate-500 hover:text-emerald-800 shrink-0 ml-2",
     title: "ফ্যামিলি কোড পরিবর্তন করুন"
   }, /*#__PURE__*/React.createElement(EditIcon, {
-    size: 12
+    size: 13
   })))), /*#__PURE__*/React.createElement("div", {
     className: "py-1"
   }, /*#__PURE__*/React.createElement("div", {
@@ -1936,15 +2518,27 @@ function App() {
     title: "সদস্য বাদ দিন"
   }, /*#__PURE__*/React.createElement(Trash, {
     size: 12
-  })))))), !addingMember ? /*#__PURE__*/React.createElement("button", {
+  })))))), !addingMember ? /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1 mt-1"
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       setAddingMember(true);
       setIsMenuOpen(false);
     },
-    className: "w-full text-left px-4 py-1.5 text-emerald-800 font-bold hover:bg-slate-50 flex items-center gap-1.5 mt-1"
+    className: "flex-1 text-left px-4 py-1.5 text-emerald-800 font-bold hover:bg-slate-50 flex items-center gap-1.5"
   }, /*#__PURE__*/React.createElement(Plus, {
     size: 14
-  }), " নতুন সদস্য যোগ করুন") : null), /*#__PURE__*/React.createElement("div", {
+  }), " নতুন সদস্য যোগ করুন"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setShowMemberInfoModal(true);
+    },
+    className: "text-slate-400 hover:text-emerald-700 pr-3 shrink-0",
+    title: "তথ্য"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 14
+  }))) : null), /*#__PURE__*/React.createElement("div", {
     className: "border-t border-slate-100 my-1"
   }), /*#__PURE__*/React.createElement("div", {
     className: "py-1"
@@ -2047,7 +2641,9 @@ function App() {
     className: "text-sm"
   }, "🔥"), /*#__PURE__*/React.createElement("span", {
     className: "text-xs font-bold text-white"
-  }, toBn(streak), " দিন"))), addingMember && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace" }
+  }, toBn(streak)), " দিন"))), addingMember && /*#__PURE__*/React.createElement("div", {
     className: "mt-3 bg-white/10 p-2 rounded-2xl border border-white/20 backdrop-blur-md"
   }, members.length === 0 && /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-emerald-100 font-semibold px-1 mb-1.5"
@@ -2076,9 +2672,80 @@ function App() {
     size: 16
   }))))), /*#__PURE__*/React.createElement("div", {
     className: "max-w-2xl mx-auto"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, updateAvailable && /*#__PURE__*/React.createElement("div", {
     className: "px-5 mt-3"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-[#C89B3C] rounded-2xl p-3.5 flex items-center gap-3 shadow-sm"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-lg"
+  }, "🔔"), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-bold text-[#16302B]"
+  }, "নতুন আপডেট এসেছে!"), /*#__PURE__*/React.createElement("p", {
+    className: "text-[10px] text-[#16302B]/80 mt-0.5"
+  }, "নতুন ফিচার যুক্ত হয়েছে — রিফ্রেশ করে দেখুন")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => window.location.reload(),
+    className: "bg-[#16302B] text-white text-[11px] font-bold px-3 py-1.5 rounded-xl shrink-0"
+  }, "রিফ্রেশ করুন"))), recoveryMessage && /*#__PURE__*/React.createElement("div", {
+    className: "px-5 mt-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-gradient-to-br from-[#0E4B43] to-[#153f39] rounded-2xl p-4 flex items-start gap-3 shadow-sm"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xl"
+  }, "🌱"), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-bold text-white"
+  }, "আবার শুরু করুন"), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-emerald-100/90 leading-relaxed mt-0.5"
+  }, "আগের দিনগুলো নিয়ে ভাববেন না — আজ থেকেই নতুনভাবে শুরু করুন।")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      localStorage.setItem("recovery_dismissed_on", dateKey(new Date()));
+      setRecoveryMessage(false);
+    },
+    className: "text-emerald-200/70 hover:text-white shrink-0"
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 16
+  })))), weeklyReminderBanner && /*#__PURE__*/React.createElement("div", {
+    className: "px-5 mt-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-[#C0286B] rounded-2xl p-4 flex items-start gap-3 shadow-sm"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xl"
+  }, "🗓️"), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-bold text-white"
+  }, "সাপ্তাহিক রিফ্লেকশন করতে ভুলবেন না যেন"), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-white/80 leading-relaxed mt-0.5"
+  }, "এই সপ্তাহের ভালো-মন্দ ও পরিকল্পনা লিখে রাখুন — নিচে স্ক্রল করে পূরণ করতে পারবেন।")), /*#__PURE__*/React.createElement("button", {
+    onClick: dismissWeeklyReminder,
+    className: "text-white/70 hover:text-white shrink-0"
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 16
+  })))), monthlyReminderBanner && /*#__PURE__*/React.createElement("div", {
+    className: "px-5 mt-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-[#9F1239] rounded-2xl p-4 flex items-start gap-3 shadow-sm"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xl"
+  }, "👨‍👩‍👧‍👦"), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-bold text-white"
+  }, "আজ মাসিক পারিবারিক পর্যালোচনার দিন"), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-white/80 leading-relaxed mt-0.5"
+  }, "পরিবারের সবাইকে নিয়ে বসুন এবং অগ্রগতি মূল্যায়ন করুন। সভা শেষে পিডিএফ ফাইল ডাউনলোড ও ডাটার ব্যাকআপ নিতে ভুলবেন না।")), /*#__PURE__*/React.createElement("button", {
+    onClick: dismissMonthlyReminder,
+    className: "text-white/70 hover:text-white shrink-0"
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 16
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "px-5 mt-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    onTouchStart: handleDateTouchStart,
+    onTouchEnd: handleDateTouchEnd,
     className: "bg-white rounded-2xl shadow-sm px-4 py-2.5 flex items-center justify-between border border-slate-200/80"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setViewDate(d => {
@@ -2090,11 +2757,27 @@ function App() {
   }, /*#__PURE__*/React.createElement(ChevronLeft, {
     size: 16
   })), /*#__PURE__*/React.createElement("div", {
-    className: "font-bold text-sm text-slate-800 flex items-center gap-2"
+    className: "font-bold text-sm text-slate-800 flex flex-col items-center gap-0.5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement(CalIcon, {
     size: 16,
     color: "var(--theme-primary)"
-  }), /*#__PURE__*/React.createElement("span", null, toBn(viewDate.getDate()), " ", BN_MONTHS[viewDate.getMonth()], " ", toBn(viewDate.getFullYear()))), /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace", fontWeight: 700 }
+  }, toBn(viewDate.getDate())), " ", BN_MONTHS[viewDate.getMonth()], " ", /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace", fontWeight: 700 }
+  }, toBn(viewDate.getFullYear())))), /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] font-semibold text-slate-400"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace"
+    }
+  }, toBn(getHijriDate(viewDate).day)), " ", getHijriDate(viewDate).month, " ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace"
+    }
+  }, toBn(getHijriDate(viewDate).year)), " হিজরি")), /*#__PURE__*/React.createElement("button", {
     onClick: () => setViewDate(d => {
       const n = new Date(d);
       n.setDate(n.getDate() + 1);
@@ -2104,19 +2787,43 @@ function App() {
   }, /*#__PURE__*/React.createElement(ChevronRight, {
     size: 16
   })))), /*#__PURE__*/React.createElement("div", {
+    className: "px-5 mt-3"
+  }, (() => {
+    const insp = getDailyInspiration(viewDate);
+    const tagLabel = insp.type === "ayat" ? "আয়াত" : insp.type === "hadith" ? "হাদীস" : "উক্তি";
+    return /*#__PURE__*/React.createElement("div", {
+      className: "rounded-2xl p-4 shadow-sm",
+      style: {
+        background: "linear-gradient(135deg, var(--theme-primary), #153f39)"
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "text-[10px] font-bold mb-1.5",
+      style: {
+        color: "#C89B3C"
+      }
+    }, "✦ আজকের তাযকিরাহ · ", tagLabel), /*#__PURE__*/React.createElement("p", {
+      className: "text-[12px] text-white leading-relaxed"
+    }, insp.text), /*#__PURE__*/React.createElement("p", {
+      className: "text-[10px] text-emerald-200/70 mt-1.5 text-right"
+    }, "— ", insp.ref));
+  })()), /*#__PURE__*/React.createElement("div", {
     className: "px-5 mt-5 space-y-4"
   }, /*#__PURE__*/React.createElement(FieldGroup, {
     title: "দৈনন্দিন আমল",
     fields: DEFAULT_DEEN_FIELDS,
     entry: entry,
     onChange: updateField,
-    member: selectedMember
+    onToggleExcuse: updateExcuse,
+    onInfoClick: () => setShowExcuseInfoModal(true),
+    member: selectedMember,
+    disabled: isFutureDate(viewDate)
   }), /*#__PURE__*/React.createElement(FieldGroup, {
     title: "ব্যক্তিগত ও পারিবারিক অভ্যাস",
     fields: DEFAULT_DUNIYA_FIELDS,
     entry: entry,
     onChange: updateField,
-    member: selectedMember
+    member: selectedMember,
+    disabled: isFutureDate(viewDate)
   }), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2132,14 +2839,15 @@ function App() {
     className: "text-xs text-slate-400 text-center py-2"
   }, "কোন কাস্টম টাস্ক নেই। উপরে বোতামে ক্লিক করে যোগ করুন।") : customFields.map(f => /*#__PURE__*/React.createElement("div", {
     key: f.key,
-    className: "flex items-center justify-between gap-3 py-2 border-b border-slate-100 last:border-b-0"
+    className: "flex items-center justify-between gap-3 py-2 border-b border-slate-100 last:border-b-0" + (isFutureDate(viewDate) ? " opacity-40" : "")
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-sm font-medium text-slate-700"
   }, /*#__PURE__*/React.createElement(LabelText, {
     text: f.label
   })), /*#__PURE__*/React.createElement(BoolToggle, {
     value: !!entry[f.key],
-    onChange: v => updateField(f.key, v)
+    onChange: v => updateField(f.key, v),
+    disabled: isFutureDate(viewDate)
   })))), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80"
   }, /*#__PURE__*/React.createElement("label", {
@@ -2148,11 +2856,25 @@ function App() {
     value: entry.note || "",
     onChange: e => updateField("note", e.target.value),
     rows: 2,
-    placeholder: "আজকের অনুভূতি, অর্জন বা শেখা বিষয় লিখুন...",
-    className: "w-full rounded-xl border border-slate-200 p-2.5 text-xs outline-none focus:border-emerald-700 transition-all resize-none bg-slate-50/50 focus:bg-white"
-  })), /*#__PURE__*/React.createElement("button", {
+    placeholder: "আজকের অনুভূতি, অর্জন বা শেখা বিষয় লিখুন...",
+    disabled: isFutureDate(viewDate),
+    className: "w-full rounded-xl border border-slate-200 p-2.5 text-xs outline-none focus:border-emerald-700 transition-all resize-none bg-slate-50/50 focus:bg-white disabled:opacity-40"
+  })), entry.lastEditedAt && !isFutureDate(viewDate) && /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between px-1"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] text-slate-400 font-medium"
+  }, "সর্বশেষ পরিবর্তন: ", formatBnDateTime(entry.lastEditedAt)), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: openHistoryModal,
+    className: "flex items-center gap-1 text-[10px] font-bold text-emerald-800 hover:text-emerald-950"
+  }, /*#__PURE__*/React.createElement(ClockIcon, {
+    size: 12
+  }), " ইতিহাস দেখুন")), isFutureDate(viewDate) && /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-center text-amber-700 bg-amber-50 border border-amber-200 rounded-xl py-2 px-3"
+  }, "ভবিষ্যতের তারিখের জন্য আমল টিক দেওয়া যাবে না — আজকের তারিখে ফিরে যান।"), /*#__PURE__*/React.createElement("button", {
     onClick: handleSave,
-    className: "w-full h-12 rounded-2xl font-bold text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.98]",
+    disabled: isFutureDate(viewDate),
+    className: "w-full h-12 rounded-2xl font-bold text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100",
     style: {
       background: savedTick ? "#4C8C74" : "var(--theme-primary)"
     }
@@ -2163,9 +2885,18 @@ function App() {
     className: "px-5 mt-8"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mb-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1.5"
   }, /*#__PURE__*/React.createElement("h2", {
     className: "font-bold text-sm text-slate-800"
-  }, "সাপ্তাহিক রিফ্লেকশন"), weeklyRowCount < getWeekRanges(monthStats.total).length && /*#__PURE__*/React.createElement("button", {
+  }, "সাপ্তাহিক রিফ্লেকশন"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setShowWeeklyInfoModal(true),
+    className: "text-slate-400 hover:text-emerald-700",
+    title: "তথ্য"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 13
+  }))), weeklyRowCount < getWeekRanges(monthStats.total).length && /*#__PURE__*/React.createElement("button", {
     onClick: addWeeklyRow,
     className: "px-2.5 py-1 bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-emerald-900 transition-all shadow-sm"
   }, /*#__PURE__*/React.createElement(Plus, {
@@ -2195,8 +2926,11 @@ function App() {
     className: "border-b border-slate-200 hover:bg-slate-50/50"
   }, /*#__PURE__*/React.createElement("td", {
     className: "py-2 px-1 border-r border-slate-200 text-center font-bold text-xs text-emerald-900 bg-slate-50/80"
-  }, "সপ্তাহ ", toBn(w), /*#__PURE__*/React.createElement("div", {
-    className: "text-[9px] font-semibold text-slate-400 mt-0.5"
+  }, "সপ্তাহ ", /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace" }
+  }, toBn(w)), /*#__PURE__*/React.createElement("div", {
+    className: "text-[9px] font-semibold text-slate-400 mt-0.5",
+    style: { fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace" }
   }, "(", toBn(start), "-", toBn(end), ")")), /*#__PURE__*/React.createElement("td", {
     className: "p-1.5 border-r border-slate-200"
   }, /*#__PURE__*/React.createElement("textarea", {
@@ -2259,7 +2993,9 @@ function App() {
     size: 14
   })), /*#__PURE__*/React.createElement("span", {
     className: "text-xs font-bold px-1 text-slate-700"
-  }, BN_MONTHS[monthCursor.month0], " ", toBn(monthCursor.year)), /*#__PURE__*/React.createElement("button", {
+  }, BN_MONTHS[monthCursor.month0], " ", /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace" }
+  }, toBn(monthCursor.year))), /*#__PURE__*/React.createElement("button", {
     onClick: () => setMonthCursor(c => c.month0 === 11 ? {
       year: c.year + 1,
       month0: 0
@@ -2277,11 +3013,13 @@ function App() {
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400 font-bold"
   }, "গড় স্কোর"), /*#__PURE__*/React.createElement("div", {
-    className: "text-xl font-bold text-emerald-950"
+    className: "text-xl font-bold text-emerald-950",
+    style: { fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace" }
   }, toBn(monthStats.avgPct), "%")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400 font-bold"
   }, "পূরণ করা দিন"), /*#__PURE__*/React.createElement("div", {
-    className: "text-xl font-bold text-emerald-950"
+    className: "text-xl font-bold text-emerald-950",
+    style: { fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace" }
   }, toBn(monthStats.filled), "/", toBn(total))), /*#__PURE__*/React.createElement("button", {
     onClick: () => setPrintMode(true),
     className: "flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-100 hover:bg-emerald-100 transition-all"
@@ -2308,13 +3046,15 @@ function App() {
   }, (_, i) => i + 1).map(d => {
     const e = monthEntries[pad2(d)];
     const s = dailyScore(e, selectedMember, allFields);
+    const cellDate = new Date(monthCursor.year, monthCursor.month0, d);
     return /*#__PURE__*/React.createElement("button", {
       key: d,
-      onClick: () => setViewDate(new Date(monthCursor.year, monthCursor.month0, d)),
+      onClick: () => setViewDate(cellDate),
       className: "h-7 w-full rounded-lg flex items-center justify-center text-[10px] font-bold transition-transform active:scale-90 shadow-sm",
       style: {
         background: scoreColor(s),
-        color: s !== null && s >= 0.35 ? "#fff" : "#555"
+        color: s !== null && s >= 0.35 ? "#fff" : "#555",
+        fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace"
       }
     }, toBn(d));
   }))))), /*#__PURE__*/React.createElement("div", {
@@ -2325,7 +3065,14 @@ function App() {
     className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("h2", {
     className: "font-bold text-sm text-slate-800"
-  }, "মাসিক পারিবারিক সভা ও সিদ্ধান্ত"), /*#__PURE__*/React.createElement("span", {
+  }, "মাসিক পারিবারিক সভা ও সিদ্ধান্ত"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setShowMeetingInfoModal(true),
+    className: "text-slate-400 hover:text-emerald-700",
+    title: "তথ্য"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 13
+  })), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold"
   }, "লাইভ সিংক")), /*#__PURE__*/React.createElement("button", {
     onClick: addMeetingRow,
@@ -2456,7 +3203,124 @@ function App() {
   }, "সেভ ও সিংক করুন"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowFamilyCodeModal(false),
     className: "flex-1 h-9 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold"
-  }, "বাতিল")))), showAddCustom && /*#__PURE__*/React.createElement("div", {
+  }, "বাতিল")))), showFamilyCodeInfoModal && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-800 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 16,
+    color: "var(--theme-primary)"
+  }), " ফ্যামিলি কাস্টম কোড"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowFamilyCodeInfoModal(false)
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 18,
+    className: "text-slate-400"
+  }))), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-4"
+  }, "পরিবারের সবার অ্যাপে একই ফ্যামিলি কোড সেট করলে সবার আমল ও তথ্যের হিসাব স্বয়ংক্রিয়ভাবে এক জায়গায় সিঙ্ক হবে। নিরাপত্তা ও ব্যক্তিগত গোপনীয়তা বজায় রাখতে কাস্টম কোড সেট করার পর এটি গোপন (Masked) করে রাখা হবে। কোডটি দেখতে ডট টেক্সটের ওপর ট্যাপ বা ক্লিক করুন।"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowFamilyCodeInfoModal(false),
+    className: "w-full h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
+  }, "বুঝেছি"))), showMemberInfoModal && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-800 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 16,
+    color: "var(--theme-primary)"
+  }), " তথ্য / নির্দেশনা"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowMemberInfoModal(false)
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 18,
+    className: "text-slate-400"
+  }))), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-4"
+  }, "যাদের নিজস্ব স্মার্টফোন নেই, শুধু তাদের নাম এখানে ম্যানুয়ালি যোগ করুন। তাদের আমল ও তথ্য এই ডিভাইস থেকেই সংরক্ষণ ও পরিচালনা করা যাবে।"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowMemberInfoModal(false),
+    className: "w-full h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
+  }, "বুঝেছি"))), showExcuseInfoModal && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-800 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 16,
+    color: "var(--theme-primary)"
+  }), " ওজর কী?"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowExcuseInfoModal(false)
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 18,
+    className: "text-slate-400"
+  }))), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-3"
+  }, "অসুস্থতা, সফর কিংবা নারীদের বিশেষ সময়ে কোনো আমল পূর্ণ করা সম্ভব না হলে পাশের \"ওজর\" বাটনে ট্যাপ করুন।"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-bold text-slate-800 mb-1.5"
+  }, "ওজর সিলেক্ট করলে যা হবে:"), /*#__PURE__*/React.createElement("ul", {
+    className: "text-xs text-slate-600 leading-relaxed mb-3 space-y-1 list-disc pl-4"
+  }, /*#__PURE__*/React.createElement("li", null, "ইনপুট অপশনটি বন্ধ হয়ে যাবে।"), /*#__PURE__*/React.createElement("li", null, "সেদিনের দৈনিক স্কোর, স্ট্রীক (ধারাবাহিকতা), ক্যালেন্ডার, গ্রাফ ও রিপোর্টে আমলটি সেদিনের \"হিসাবের বাইরে\" থাকবে — অর্থাৎ নেগেটিভ বা মিসড হিসেবে গণ্য হবে না।")), /*#__PURE__*/React.createElement("div", {
+    className: "bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-bold text-amber-900 mb-1"
+  }, "বিশেষ দ্রষ্টব্য:"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-amber-900/90 leading-relaxed mb-1.5"
+  }, "১. পুরুষদের ক্ষেত্রে: ফরজ সালাতে \"ওজর\" প্রযোজ্য নয়। শরঈ বিধান অনুযায়ী অসুস্থতা বা সফরেও সাধ্যমতো ওয়াক্তেই ফরজ সালাত আদায় করতে হবে। ওয়াক্তে আদায় না হলে পরে তা কাযা আদায় করতে হবে।"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-amber-900/90 leading-relaxed"
+  }, "২. নারীদের ক্ষেত্রে: কেবল হায়েজ ও নেফাস অবস্থায় ফরজ সালাতে \"ওজর\" প্রযোজ্য। এ সময়ের সালাত পরে কাযা করতে হয় না। তবে অসুস্থতা বা সফরের কারণে ফরজ সালাতে \"ওজর\" প্রযোজ্য নয়; সাধ্যমতো ওয়াক্তেই সালাত আদায় করতে হবে। ওয়াক্তে আদায় না হলে পরে তা কাযা আদায় করতে হবে।")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowExcuseInfoModal(false),
+    className: "w-full h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
+  }, "বুঝেছি"))), showWeeklyInfoModal && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-800 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 16,
+    color: "var(--theme-primary)"
+  }), " সাপ্তাহিক রিফ্লেকশন"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowWeeklyInfoModal(false)
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 18,
+    className: "text-slate-400"
+  }))), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-4"
+  }, "প্রতি সপ্তাহ শেষে নিজের আমল ও কাজের পর্যালোচনা করুন। এই সপ্তাহে কোন কাজগুলো ভালো হয়েছে এবং কোথায় আরও উন্নতি করা প্রয়োজন, তা এখানে সংক্ষিপ্ত নোট হিসেবে লিখে রাখুন। নতুন সপ্তাহ বা তথ্য যোগ করতে \"+ সারি যোগ করুন\" বোতামে ক্লিক করুন; এতে স্বয়ংক্রিয়ভাবে পরবর্তী ক্রমিক নম্বর যুক্ত হয়ে যাবে।"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowWeeklyInfoModal(false),
+    className: "w-full h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
+  }, "বুঝেছি"))), showMeetingInfoModal && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-800 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 16,
+    color: "var(--theme-primary)"
+  }), " মাসিক পারিবারিক সভা"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowMeetingInfoModal(false)
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 18,
+    className: "text-slate-400"
+  }))), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-4"
+  }, "মাস শেষে পরিবারের সবাইকে নিয়ে বসুন এবং বিগত মাসের অগ্রগতি মূল্যায়ন করুন। নতুন বিষয় বা সিদ্ধান্ত যোগ করতে \"+ সারি যোগ করুন\" বোতামে ক্লিক করুন; এতে স্বয়ংক্রিয়ভাবে পরবর্তী ক্রমিক নম্বর যুক্ত হবে। সভায় আলোচিত গুরুত্বপূর্ণ বিষয় ও সিদ্ধান্তগুলো লিখুন এবং সভা শেষে চাইলে পিডিএফ ফাইল ডাউনলোড এবং ডাটা ব্যাকআপ করে রাখতে পারেন।"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowMeetingInfoModal(false),
+    className: "w-full h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
+  }, "বুঝেছি"))), showAddCustom && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
@@ -2493,7 +3357,7 @@ function App() {
     className: "text-slate-400"
   }))), /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-600 space-y-2.5 leading-relaxed font-medium"
-  }, /*#__PURE__*/React.createElement("p", null, "১. কাস্টম ফ্যামিলি কোড তৈরি করে পরিবারের সকল সদস্যের ডিভাইসে একই কোড বসিয়ে ডাটা রিয়েল-টাইমে সিংক করুন।"), /*#__PURE__*/React.createElement("p", null, "২. প্রতিদিনের আমল ও কাজগুলো টিক চিহ্ন বা সংখ্যা দিয়ে পূরণ করুন। \"সেভ\" বাটনে চাপ দেওয়ার পর সবুজ টিক (✓) দেখা মানেই ডাটা সিংক হয়েছে।"), /*#__PURE__*/React.createElement("p", null, "৩. মাসের শেষে দৈনিক রিপোর্ট, সাপ্তাহিক রিফ্লেকশন এবং পারিবারিক সভার কার্যপরিধি — সবকিছু একসাথে ২ পৃষ্ঠার PDF ফাইল হিসেবে প্রিন্ট/সেভ দেওয়া যাবে।"), /*#__PURE__*/React.createElement("p", null, "৪. প্রিন্ট কপির বাম পাশে পাঞ্চ মার্জিন রাখা হয়েছে যা ফাইলে বাইন্ডিং করার উপযুক্ত।"), /*#__PURE__*/React.createElement("p", null, "৫. মেনু থেকে \"এক্সপোর্ট\" করে পুরো পরিবারের ডাটার একটি ব্যাকআপ (.json) ফাইল ডাউনলোড করে রাখুন। প্রয়োজনে একই মেনু থেকে \"ইম্পোর্ট\" করে তা ফিরিয়ে আনা যাবে।"), /*#__PURE__*/React.createElement("p", null, "৬. সেভ বা এক্সপোর্ট করার সময় \"সমস্যা হয়েছে\" জাতীয় বার্তা দেখালে সেটি সাধারণত ইন্টারনেট সংযোগ বা ডাটাবেজ পারমিশনের সমস্যা — এমন হলে আবার চেষ্টা করুন, সমস্যা থাকলে ফিডব্যাক অপশনে জানান।")), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("p", null, "১. কাস্টম ফ্যামিলি কোড তৈরি করে পরিবারের সকল সদস্যের ডিভাইসে একই কোড বসিয়ে ডাটা রিয়েল-টাইমে সিংক করুন।"), /*#__PURE__*/React.createElement("p", null, "২. প্রতিদিনের আমল ও কাজগুলো টিক চিহ্ন বা সংখ্যা দিয়ে পূরণ করুন। \"সেভ\" বাটনে চাপ দেওয়ার পর সবুজ টিক (✓) দেখা মানেই ডাটা সিংক হয়েছে।"), /*#__PURE__*/React.createElement("p", null, "৩. মাসের শেষে দৈনিক রিপোর্ট, সাপ্তাহিক রিফ্লেকশন এবং পারিবারিক সভার কার্যপরিধি — সবকিছু একসাথে ২ পৃষ্ঠার PDF ফাইল হিসেবে প্রিন্ট/সেভ দেওয়া যাবে।"), /*#__PURE__*/React.createElement("p", null, "৪. প্রিন্ট কপির বাম পাশে পাঞ্চ মার্জিন রাখা হয়েছে যা ফাইলে বাইন্ডিং করার উপযুক্ত।"), /*#__PURE__*/React.createElement("p", null, "৫. মেনু থেকে \"এক্সপোর্ট\" করে পুরো পরিবারের ডাটার একটি ব্যাকআপ (.json) ফাইল ডাউনলোড করে রাখুন। প্রয়োজনে একই মেনু থেকে \"ইম্পোর্ট\" করে তা ফিরিয়ে আনা যাবে।"), /*#__PURE__*/React.createElement("p", null, "৬. সেভ বা এক্সপোর্ট করার সময় \"সমস্যা হয়েছে\" জাতীয় বার্তা দেখালে সেটি সাধারণত ইন্টারনেট সংযোগ বা ডাটাবেজ পারমিশনের সমস্যা — এমন হলে আবার চেষ্টা করুন, সমস্যা থাকলে ফিডব্যাক অপশনে জানান।"), /*#__PURE__*/React.createElement("p", null, "৭. অ্যাপটির সকল ফিচার সঠিকভাবে ব্যবহার করতে বিভিন্ন অপশনের পাশে থাকা ⓘ (ইনফো) আইকনে ট্যাপ করে নির্দেশনাগুলো পড়ে নিন।")), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowHelpModal(false),
     className: "w-full mt-5 h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
   }, "বুঝেছি"))), showFeedbackModal && /*#__PURE__*/React.createElement("div", {
@@ -2545,40 +3409,137 @@ function App() {
       setFeedbackStatus(null);
     },
     className: "h-9 px-4 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold"
-  }, "বাতিল")))));
+  }, "বাতিল")))), showHistoryModal && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100 max-h-[75vh] flex flex-col"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-1"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-800 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(ClockIcon, {
+    size: 16,
+    color: "var(--theme-primary)"
+  }), " এন্ট্রি ইতিহাস"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowHistoryModal(false)
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 18,
+    className: "text-slate-400"
+  }))), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-slate-500 mb-3"
+  }, "সর্বশেষ ৫টি পূর্ববর্তী সংস্করণ এখানে দেখা যাবে। পুনরুদ্ধার করলে সেই সংস্করণটি ফর্মে বসে যাবে — পরিবর্তন সংরক্ষণ করতে আবার \"সেভ করুন\" বাটনে চাপ দিতে হবে।"), /*#__PURE__*/React.createElement("div", {
+    className: "overflow-y-auto custom-scrollbar space-y-2 flex-1"
+  }, loadingHistory ? /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-center py-8"
+  }, /*#__PURE__*/React.createElement(Loader2, {
+    className: "animate-spin",
+    color: "var(--theme-primary)",
+    size: 22
+  })) : historyList.length === 0 ? /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-400 text-center py-6"
+  }, "কোনো পূর্ববর্তী সংস্করণ নেই — এই দিনের এন্ট্রি এখনো এডিট করা হয়নি।") : historyList.map(h => /*#__PURE__*/React.createElement("div", {
+    key: h.id,
+    className: "flex items-center justify-between gap-2 border border-slate-200 rounded-xl p-2.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] font-medium text-slate-600"
+  }, formatBnDateTime(h.editedAt)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => restoreHistoryVersion(h.value),
+    className: "text-[11px] font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100 shrink-0"
+  }, "পুনরুদ্ধার করুন")))), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowHistoryModal(false),
+    className: "w-full h-9 mt-3 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold shrink-0"
+  }, "বন্ধ করুন"))), milestoneToast && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-x-0 bottom-6 flex justify-center px-5 z-[60]"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-[#16302B] text-white rounded-2xl shadow-xl px-5 py-4 max-w-sm w-full flex items-center gap-3 border border-[#C89B3C]/40"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-2xl"
+  }, "🎉"), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-bold",
+    style: {
+      color: "#C89B3C"
+    }
+  }, "অভিনন্দন!"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-200 mt-0.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace" }
+  }, toBn(milestoneToast)), " দিনের ধারাবাহিকতা পূর্ণ হয়েছে — মাশাআল্লাহ, চালিয়ে যান!")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setMilestoneToast(null),
+    className: "text-slate-400 hover:text-white shrink-0"
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 16
+  })))));
 }
 function FieldGroup({
   title,
   fields,
   entry,
   onChange,
-  member
+  onToggleExcuse,
+  onInfoClick,
+  member,
+  disabled
 }) {
   return /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1.5 mb-3"
   }, /*#__PURE__*/React.createElement("h3", {
-    className: "text-sm font-bold mb-3 text-emerald-950"
-  }, title), /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-bold text-emerald-950"
+  }, title), onInfoClick && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: onInfoClick,
+    className: "text-slate-400 hover:text-emerald-700",
+    title: "তথ্য"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 13
+  }))), /*#__PURE__*/React.createElement("div", {
     className: "space-y-3"
-  }, fields.filter(f => fieldApplies(f, member)).map(f => /*#__PURE__*/React.createElement("div", {
-    key: f.key,
-    className: "flex items-center justify-between gap-3"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xs font-medium text-slate-700"
-  }, /*#__PURE__*/React.createElement(LabelText, {
-    text: f.label
-  })), f.type === "bool" && /*#__PURE__*/React.createElement(BoolToggle, {
-    value: !!entry[f.key],
-    onChange: v => onChange(f.key, v)
-  }), f.type === "count" && /*#__PURE__*/React.createElement(CountStepper, {
-    value: entry[f.key],
-    max: f.max,
-    onChange: v => onChange(f.key, v)
-  }), f.type === "number" && /*#__PURE__*/React.createElement(NumberField, {
-    value: entry[f.key],
-    target: f.target,
-    onChange: v => onChange(f.key, v)
-  })))));
+  }, fields.filter(f => fieldApplies(f, member)).map(f => {
+    const fieldExcusable = isFieldExcusable(f, member);
+    const excused = !!(fieldExcusable && isExcused(entry, f.key));
+    const rowDisabled = disabled || excused;
+    return /*#__PURE__*/React.createElement("div", {
+      key: f.key,
+      className: "flex items-center justify-between gap-3" + (disabled ? " opacity-40" : "")
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-xs font-medium text-slate-700"
+    }, /*#__PURE__*/React.createElement(LabelText, {
+      text: f.label
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, fieldExcusable && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      disabled: disabled,
+      onClick: () => onToggleExcuse(f.key, !excused),
+      className: "px-2 py-1 rounded-lg text-[10px] font-bold border shrink-0 transition-all",
+      style: excused ? {
+        background: "#C89B3C",
+        borderColor: "#C89B3C",
+        color: "#16302B"
+      } : {
+        background: "#fff",
+        borderColor: "#D8DED3",
+        color: "#8A9A8F"
+      }
+    }, "ওজর"), f.type === "bool" && /*#__PURE__*/React.createElement(BoolToggle, {
+      value: !!entry[f.key],
+      onChange: v => onChange(f.key, v),
+      disabled: rowDisabled
+    }), f.type === "count" && /*#__PURE__*/React.createElement(CountStepper, {
+      value: entry[f.key],
+      max: f.max,
+      onChange: v => onChange(f.key, v),
+      disabled: rowDisabled
+    }), f.type === "number" && /*#__PURE__*/React.createElement(NumberField, {
+      value: entry[f.key],
+      target: f.target,
+      onChange: v => onChange(f.key, v),
+      disabled: rowDisabled
+    })));
+  })));
 }
 const container = document.getElementById("root");
 const root = ReactDOM.createRoot(container);
