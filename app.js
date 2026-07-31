@@ -8,25 +8,58 @@ const firebaseConfig = {
   appId: "1:10031644603:web:afaf01434c65147d988e9e"
 };
 firebase.initializeApp(firebaseConfig);
+
+// --- Firebase App Check (reCAPTCHA v3) ---
+// Runs completely in the background — no puzzle, no visible UI for the user.
+// Get your site key from: Firebase Console → App Check → Apps → your web app → reCAPTCHA v3
+// (You must also register/enable App Check for Firestore in the console.)
+firebase.appCheck().activate(
+  new firebase.appCheck.ReCaptchaV3Provider("6LetBG8tAAAAAG8XPxIC3RIWkG9hPnCXY3ZCN4fz"),
+  true // isTokenAutoRefreshEnabled
+);
+
 const db = firebase.firestore();
 db.enablePersistence().catch(() => {});
+const auth = firebase.auth();
 
 // Feedback submission — powered by Web3Forms (no server/coding needed).
 // 1. Go to https://web3forms.com and enter your email to get a free
 //    "Access Key" (arrives instantly by email, no account required).
 // 2. Paste that key below, replacing the placeholder text.
 const WEB3FORMS_ACCESS_KEY = "4e0befa2-68c6-4c9e-92fb-ecffa3b4b2de";
+// ভুল করে ভুল অক্ষর পড়া এড়াতে 0/O এবং 1/I বাদ দেওয়া হয়েছে
+const FAMILY_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function generateSecureCode(length) {
+  const cryptoObj = window.crypto || window.msCrypto;
+  let out = "";
+  if (cryptoObj && cryptoObj.getRandomValues) {
+    const arr = new Uint32Array(length);
+    cryptoObj.getRandomValues(arr);
+    for (let i = 0; i < length; i++) out += FAMILY_CODE_CHARS[arr[i] % FAMILY_CODE_CHARS.length];
+  } else {
+    // পুরনো ব্রাউজারের জন্য fallback
+    for (let i = 0; i < length; i++) out += FAMILY_CODE_CHARS[Math.floor(Math.random() * FAMILY_CODE_CHARS.length)];
+  }
+  return out;
+}
 function getFamilyCode() {
   let code = localStorage.getItem("family_code");
   if (!code) {
-    code = "FAM-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    // ৬ থেকে বাড়িয়ে ৯ ক্যারেক্টার করা হয়েছে — brute-force আরও কঠিন করতে
+    code = "FAM-" + generateSecureCode(9);
     localStorage.setItem("family_code", code);
   }
   return code;
 }
+// শুধু ইংরেজি অক্ষর, সংখ্যা ও হাইফেন — ৩ থেকে ৩০ ক্যারেক্টার
+const FAMILY_CODE_PATTERN = /^[A-Z0-9-]{3,30}$/;
 function setFamilyCode(code) {
   if (!code || !code.trim()) return;
   const normalized = code.trim().toUpperCase();
+  if (!FAMILY_CODE_PATTERN.test(normalized)) {
+    alert("ফ্যামিলি কোডে শুধু ইংরেজি অক্ষর, সংখ্যা এবং হাইফেন (-) ব্যবহার করা যাবে। দৈর্ঘ্য ৩ থেকে ৩০ ক্যারেক্টারের মধ্যে হতে হবে।");
+    return;
+  }
   localStorage.setItem("family_code", normalized);
   localStorage.setItem("family_code_is_custom", "1");
   window.location.reload();
@@ -1845,6 +1878,10 @@ function App() {
   async function handleSaveCustomFamilyCode() {
     const code = customFamCodeInput.trim().toUpperCase();
     if (!code) return;
+    if (code.length < 8) {
+      window.alert("কাস্টম ফ্যামিলি কোড কমপক্ষে ৮ ক্যারেক্টার হতে হবে।");
+      return;
+    }
     try {
       const doc = await db.collection(`data_${code}`).doc("members").get();
       const msg = doc.exists
@@ -3549,6 +3586,23 @@ function FieldGroup({
     })));
   })));
 }
-const container = document.getElementById("root");
-const root = ReactDOM.createRoot(container);
-root.render(/*#__PURE__*/React.createElement(App, null));
+function mountApp() {
+  const container = document.getElementById("root");
+  const root = ReactDOM.createRoot(container);
+  root.render(/*#__PURE__*/React.createElement(App, null));
+}
+
+// --- Anonymous Authentication (background, no login UI) ---
+// We wait for a signed-in user before mounting so every Firestore
+// call the app makes already has request.auth != null.
+const unsubscribeAuth = auth.onAuthStateChanged(user => {
+  if (user) {
+    unsubscribeAuth();
+    mountApp();
+  }
+});
+auth.signInAnonymously().catch(err => {
+  console.error("Anonymous sign-in failed:", err);
+  unsubscribeAuth();
+  mountApp(); // don't leave the user stuck on a blank screen
+});
