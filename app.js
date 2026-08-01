@@ -1303,10 +1303,18 @@ async function loadWeekly(memberId, year, month0) {
     return {};
   }
 }
-async function saveWeekly(memberId, year, month0, data) {
-  await appStorage.set(weeklyKey(memberId, year, month0), JSON.stringify(data), true);
+async function saveWeekly(memberId, year, month0, data, ownerUid) {
+  await db.collection(getCollectionName()).doc(weeklyKey(memberId, year, month0)).set({
+    value: JSON.stringify(data),
+    updatedAt: Date.now(),
+    ownerUid: ownerUid ?? null
+  }, {
+    merge: true
+  });
 }
-async function loadMembers() {
+// --- Legacy (v1) member storage — single "members" doc holding a JSON array.
+// Kept ONLY as a one-time migration source; do not write to it anymore.
+async function loadLegacyMembers() {
   try {
     const res = await appStorage.get("members", true);
     return res ? JSON.parse(res.value) : [];
@@ -1314,8 +1322,66 @@ async function loadMembers() {
     return [];
   }
 }
-async function saveMembers(members) {
-  await appStorage.set("members", JSON.stringify(members), true);
+
+// --- Device-Claim member storage (v2) — one real Firestore document per
+// member (doc id: "member:<id>") with plain top-level fields, so Firestore
+// security rules can read `ownerUid` directly (rules cannot see inside a
+// JSON-stringified "value" field, which is why v1's single array-doc
+// couldn't support per-member ownership).
+function memberDocId(id) {
+  return `member:${id}`;
+}
+async function loadMembersV2() {
+  try {
+    const snap = await db.collection(getCollectionName()).where(firebase.firestore.FieldPath.documentId(), ">=", "member:").where(firebase.firestore.FieldPath.documentId(), "<", "member:\uf8ff").get();
+    return snap.docs.map(d => ({
+      id: d.id.slice("member:".length),
+      ...d.data()
+    }));
+  } catch {
+    return [];
+  }
+}
+async function saveMemberDoc(member) {
+  const {
+    id,
+    ...fields
+  } = member;
+  await db.collection(getCollectionName()).doc(memberDocId(id)).set(fields, {
+    merge: true
+  });
+}
+async function deleteMemberDoc(id) {
+  await db.collection(getCollectionName()).doc(memberDocId(id)).delete();
+}
+async function claimMemberDoc(id, uid) {
+  await db.collection(getCollectionName()).doc(memberDocId(id)).update({
+    ownerUid: uid
+  });
+}
+async function releaseMemberDoc(id) {
+  await db.collection(getCollectionName()).doc(memberDocId(id)).update({
+    ownerUid: null
+  });
+}
+// One-time migration: if no v2 (member:*) docs exist yet but a legacy v1
+// array-doc has members, copy each into its own v2 doc as "unclaimed"
+// (ownerUid: null) — any device may claim them later from the member list.
+// The legacy doc is left untouched (not deleted) as a safety net.
+async function migrateMembersIfNeeded() {
+  const v2 = await loadMembersV2();
+  if (v2.length) return v2;
+  const legacy = await loadLegacyMembers();
+  if (!legacy.length) return [];
+  const migrated = legacy.map(m => ({
+    ...m,
+    ownerUid: m.ownerUid ?? null,
+    createdAt: m.createdAt || Date.now()
+  }));
+  try {
+    await Promise.all(migrated.map(m => saveMemberDoc(m)));
+  } catch {}
+  return migrated;
 }
 async function loadCustomFields() {
   try {
@@ -1336,8 +1402,18 @@ async function loadEntry(memberId, key) {
     return null;
   }
 }
-async function saveEntry(memberId, key, data) {
-  await appStorage.set(`entry:${memberId}:${key}`, JSON.stringify(data), true);
+async function saveEntry(memberId, key, data, ownerUid) {
+  // ownerUid is stamped from the member's CURRENT ownerUid at save time (not
+  // the writer's own uid) so the entry stays consistent with claim state and
+  // future Firestore rules can check request.auth.uid == resource.data.ownerUid
+  // directly on this same document (no extra get() lookup needed).
+  await db.collection(getCollectionName()).doc(entryDocId(memberId, key)).set({
+    value: JSON.stringify(data),
+    updatedAt: Date.now(),
+    ownerUid: ownerUid ?? null
+  }, {
+    merge: true
+  });
 }
 function entryDocId(memberId, key) {
   return `entry:${memberId}:${key}`;
@@ -1631,6 +1707,7 @@ function App() {
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showFamilyCodeModal, setShowFamilyCodeModal] = useState(false);
+  const [showGoogleAccountModal, setShowGoogleAccountModal] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [archiveYear, setArchiveYear] = useState(() => new Date().getFullYear());
   const [archiveMonth0, setArchiveMonth0] = useState(() => new Date().getMonth());
@@ -1673,7 +1750,7 @@ function App() {
   }
   useEffect(() => {
     (async () => {
-      const m = await loadMembers();
+      const m = await migrateMembersIfNeeded();
       setMembers(m);
       const cf = await loadCustomFields();
       setCustomFields(cf);
@@ -1745,6 +1822,12 @@ function App() {
     return [...DEFAULT_DEEN_FIELDS, ...DEFAULT_DUNIYA_FIELDS, ...customFields];
   }, [customFields]);
   const selectedMember = useMemo(() => (members || []).find(m => m.id === selectedId) || null, [members, selectedId]);
+  // True when this member has been claimed ("দায়িত্ব নিন") by a different
+  // Firebase Auth uid than the one this device is currently signed in as.
+  // Unclaimed members (ownerUid null) are editable by anyone — that's the
+  // "manual member, no phone of their own" case. Read access is never
+  // restricted, only writing.
+  const isLockedForThisDevice = !!(selectedMember && selectedMember.ownerUid && (!auth.currentUser || selectedMember.ownerUid !== auth.currentUser.uid));
   useEffect(() => {
     // Guard: on first render selectedId is still null (real value loads async).
     // Skip that null write so it never overwrites the previously saved
@@ -1995,9 +2078,13 @@ function App() {
   }
   async function handleSaveWeekly() {
     if (!selectedId) return;
+    if (isLockedForThisDevice) {
+      alert("এই সদস্যের দায়িত্ব অন্য ডিভাইসে আছে — এখান থেকে এডিট করা যাবে না।");
+      return;
+    }
     setSavingWeekly(true);
     try {
-      await saveWeekly(selectedId, monthCursor.year, monthCursor.month0, weekly);
+      await saveWeekly(selectedId, monthCursor.year, monthCursor.month0, weekly, selectedMember?.ownerUid ?? null);
       setWeeklySavedTick(true);
       setTimeout(() => setWeeklySavedTick(false), 1600);
     } catch (err) {
@@ -2042,18 +2129,24 @@ function App() {
     const name = newName.trim();
     if (!name) return;
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const next = [...(members || []), {
+    // Creating a member on this device claims it for the signed-in Google
+    // account right away — that account's uid becomes the only one allowed
+    // to edit this member's data (Device-Claim), until it's released.
+    const newMember = {
       id,
       name,
-      gender: newGender
-    }];
+      gender: newGender,
+      ownerUid: auth.currentUser ? auth.currentUser.uid : null,
+      createdAt: Date.now()
+    };
+    const next = [...(members || []), newMember];
     setMembers(next);
     setSelectedId(id);
     setNewName("");
     setNewGender("male");
     setAddingMember(false);
     try {
-      await saveMembers(next);
+      await saveMemberDoc(newMember);
     } catch (err) {
       alert("সদস্য সিংক করতে সমস্যা হয়েছে: " + err.message);
     }
@@ -2064,7 +2157,7 @@ function App() {
     const next = (members || []).filter(x => x.id !== m.id);
     setMembers(next);
     try {
-      await saveMembers(next);
+      await deleteMemberDoc(m.id);
     } catch (err) {
       alert("সদস্য সিংক করতে সমস্যা হয়েছে: " + err.message);
     }
@@ -2072,15 +2165,41 @@ function App() {
       setSelectedId(next.length ? next[0].id : null);
     }
   }
+  async function handleClaimMember(m) {
+    const uid = auth.currentUser ? auth.currentUser.uid : null;
+    if (!uid) return;
+    try {
+      await claimMemberDoc(m.id, uid);
+      setMembers(prev => prev.map(x => x.id === m.id ? {
+        ...x,
+        ownerUid: uid
+      } : x));
+    } catch (err) {
+      alert("দায়িত্ব নিতে সমস্যা হয়েছে: " + err.message);
+    }
+  }
+  async function handleReleaseMember(m) {
+    const ok = window.confirm(`"${m.name}"-এর দায়িত্ব ছেড়ে দিতে চান? এরপর যেকোনো সাইন-ইন করা ডিভাইস এই সদস্যের দায়িত্ব নিতে পারবে।`);
+    if (!ok) return;
+    try {
+      await releaseMemberDoc(m.id);
+      setMembers(prev => prev.map(x => x.id === m.id ? {
+        ...x,
+        ownerUid: null
+      } : x));
+    } catch (err) {
+      alert("দায়িত্ব ছাড়তে সমস্যা হয়েছে: " + err.message);
+    }
+  }
   function updateField(key, value) {
-    if (isFutureDate(viewDate)) return;
+    if (isFutureDate(viewDate) || isLockedForThisDevice) return;
     setEntry(prev => ({
       ...prev,
       [key]: value
     }));
   }
   function updateExcuse(key, value) {
-    if (isFutureDate(viewDate)) return;
+    if (isFutureDate(viewDate) || isLockedForThisDevice) return;
     setEntry(prev => ({
       ...prev,
       excused: {
@@ -2091,6 +2210,10 @@ function App() {
   }
   async function handleSave() {
     if (!selectedId || isFutureDate(viewDate)) return;
+    if (isLockedForThisDevice) {
+      alert("এই সদস্যের দায়িত্ব অন্য ডিভাইসে আছে — এখান থেকে এডিট করা যাবে না।");
+      return;
+    }
     setSaving(true);
     try {
       const key = dateKey(viewDate);
@@ -2101,7 +2224,7 @@ function App() {
         ...entry,
         lastEditedAt: Date.now()
       };
-      await saveEntry(selectedId, key, toSave);
+      await saveEntry(selectedId, key, toSave, selectedMember?.ownerUid ?? null);
       originalEntryRef.current = toSave;
       setEntry(toSave);
       localStorage.setItem("last_active_date", dateKey(new Date()));
@@ -2569,7 +2692,30 @@ function App() {
     className: "flex items-center gap-1.5"
   }, m.id === selectedId && /*#__PURE__*/React.createElement("span", {
     className: "w-2 h-2 rounded-full bg-emerald-600"
-  }), /*#__PURE__*/React.createElement("button", {
+  }), !m.ownerUid ? /*#__PURE__*/React.createElement("button", {
+    onClick: e => {
+      e.stopPropagation();
+      handleClaimMember(m);
+    },
+    className: "text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 shrink-0",
+    title: "এই সদস্যের দায়িত্ব নিন"
+  }, "দায়িত্ব নিন") : m.ownerUid === (auth.currentUser && auth.currentUser.uid) ? /*#__PURE__*/React.createElement("button", {
+    onClick: e => {
+      e.stopPropagation();
+      handleReleaseMember(m);
+    },
+    className: "text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0",
+    title: "আপনার দায়িত্বে আছে — ছেড়ে দিতে ট্যাপ করুন"
+  }, "আপনার") : /*#__PURE__*/React.createElement("button", {
+    onClick: e => {
+      e.stopPropagation();
+      handleReleaseMember(m);
+    },
+    className: "text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 shrink-0 flex items-center gap-0.5",
+    title: "অন্য ডিভাইসের দায়িত্বে আছে — ছেড়ে দিতে ট্যাপ করুন"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 9
+  }), " সংরক্ষিত"), /*#__PURE__*/React.createElement("button", {
     onClick: e => {
       e.stopPropagation();
       handleRemoveMember(m);
@@ -2685,7 +2831,19 @@ function App() {
     className: "w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700 font-medium text-emerald-800"
   }, /*#__PURE__*/React.createElement(MessageSquare, {
     size: 14
-  }), " আমাদের জানান (পরামর্শ)")))))), /*#__PURE__*/React.createElement("div", {
+  }), " আমাদের জানান (পরামর্শ)"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setShowGoogleAccountModal(true);
+      setIsMenuOpen(false);
+    },
+    className: "w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center justify-between text-slate-700"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 14
+  }), " Google অ্যাকাউন্ট (ঐচ্ছিক)"), isGoogleLinked() && /*#__PURE__*/React.createElement("span", {
+    className: "w-2 h-2 rounded-full bg-emerald-600"
+  }))))))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mt-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm",
@@ -2876,14 +3034,14 @@ function App() {
     onToggleExcuse: updateExcuse,
     onInfoClick: () => setShowExcuseInfoModal(true),
     member: selectedMember,
-    disabled: isFutureDate(viewDate)
+    disabled: isFutureDate(viewDate) || isLockedForThisDevice
   }), /*#__PURE__*/React.createElement(FieldGroup, {
     title: "ব্যক্তিগত ও পারিবারিক অভ্যাস",
     fields: DEFAULT_DUNIYA_FIELDS,
     entry: entry,
     onChange: updateField,
     member: selectedMember,
-    disabled: isFutureDate(viewDate)
+    disabled: isFutureDate(viewDate) || isLockedForThisDevice
   }), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2899,7 +3057,7 @@ function App() {
     className: "text-xs text-slate-400 text-center py-2"
   }, "কোন কাস্টম টাস্ক নেই। উপরে বোতামে ক্লিক করে যোগ করুন।") : customFields.map(f => /*#__PURE__*/React.createElement("div", {
     key: f.key,
-    className: "flex items-center justify-between gap-3 py-2 border-b border-slate-100 last:border-b-0" + (isFutureDate(viewDate) ? " opacity-40" : "")
+    className: "flex items-center justify-between gap-3 py-2 border-b border-slate-100 last:border-b-0" + (isFutureDate(viewDate) || isLockedForThisDevice ? " opacity-40" : "")
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-sm font-medium text-slate-700"
   }, /*#__PURE__*/React.createElement(LabelText, {
@@ -2907,7 +3065,7 @@ function App() {
   })), /*#__PURE__*/React.createElement(BoolToggle, {
     value: !!entry[f.key],
     onChange: v => updateField(f.key, v),
-    disabled: isFutureDate(viewDate)
+    disabled: isFutureDate(viewDate) || isLockedForThisDevice
   })))), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80"
   }, /*#__PURE__*/React.createElement("label", {
@@ -2917,7 +3075,7 @@ function App() {
     onChange: e => updateField("note", e.target.value),
     rows: 2,
     placeholder: "আজকের অনুভূতি, অর্জন বা শেখা বিষয় লিখুন...",
-    disabled: isFutureDate(viewDate),
+    disabled: isFutureDate(viewDate) || isLockedForThisDevice,
     className: "w-full rounded-xl border border-slate-200 p-2.5 text-xs outline-none focus:border-emerald-700 transition-all resize-none bg-slate-50/50 focus:bg-white disabled:opacity-40"
   })), entry.lastEditedAt && !isFutureDate(viewDate) && /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between px-1"
@@ -2931,9 +3089,11 @@ function App() {
     size: 12
   }), " ইতিহাস দেখুন")), isFutureDate(viewDate) && /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-center text-amber-700 bg-amber-50 border border-amber-200 rounded-xl py-2 px-3"
-  }, "ভবিষ্যতের তারিখের জন্য আমল টিক দেওয়া যাবে না — আজকের তারিখে ফিরে যান।"), /*#__PURE__*/React.createElement("button", {
+  }, "ভবিষ্যতের তারিখের জন্য আমল টিক দেওয়া যাবে না — আজকের তারিখে ফিরে যান।"), isLockedForThisDevice && /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-center text-slate-600 bg-slate-100 border border-slate-200 rounded-xl py-2 px-3"
+  }, "এই সদস্যের দায়িত্ব অন্য ডিভাইসে আছে — এখান থেকে শুধু দেখা যাবে, এডিট করা যাবে না।"), /*#__PURE__*/React.createElement("button", {
     onClick: handleSave,
-    disabled: isFutureDate(viewDate),
+    disabled: isFutureDate(viewDate) || isLockedForThisDevice,
     className: "w-full h-12 rounded-2xl font-bold text-white shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100",
     style: {
       background: savedTick ? "#4C8C74" : "var(--theme-primary)"
@@ -2998,7 +3158,8 @@ function App() {
     onChange: e => updateWeekly(w, "good", e.target.value),
     placeholder: "এই সপ্তাহে যা ভালো হয়েছে...",
     rows: 2,
-    className: "w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-emerald-700 bg-white resize-none"
+    disabled: isLockedForThisDevice,
+    className: "w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-emerald-700 bg-white resize-none disabled:opacity-50 disabled:bg-slate-50"
   })), /*#__PURE__*/React.createElement("td", {
     className: "p-1.5 border-r border-slate-200"
   }, /*#__PURE__*/React.createElement("textarea", {
@@ -3006,7 +3167,8 @@ function App() {
     onChange: e => updateWeekly(w, "gap", e.target.value),
     placeholder: "কোথায় ঘাটতি ছিল...",
     rows: 2,
-    className: "w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-emerald-700 bg-white resize-none"
+    disabled: isLockedForThisDevice,
+    className: "w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-emerald-700 bg-white resize-none disabled:opacity-50 disabled:bg-slate-50"
   })), /*#__PURE__*/React.createElement("td", {
     className: "p-1.5"
   }, /*#__PURE__*/React.createElement("textarea", {
@@ -3014,10 +3176,12 @@ function App() {
     onChange: e => updateWeekly(w, "plan", e.target.value),
     placeholder: "আগামী সপ্তাহের পরিকল্পনা...",
     rows: 2,
-    className: "w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-emerald-700 bg-white resize-none"
+    disabled: isLockedForThisDevice,
+    className: "w-full text-xs p-1.5 border border-slate-200 rounded-lg outline-none focus:border-emerald-700 bg-white resize-none disabled:opacity-50 disabled:bg-slate-50"
   }))))))), /*#__PURE__*/React.createElement("button", {
     onClick: handleSaveWeekly,
-    className: "w-full h-11 rounded-2xl font-bold text-white text-xs bg-emerald-900 flex items-center justify-center gap-2 shadow-sm"
+    disabled: isLockedForThisDevice,
+    className: "w-full h-11 rounded-2xl font-bold text-white text-xs bg-emerald-900 flex items-center justify-center gap-2 shadow-sm disabled:opacity-40"
   }, savingWeekly ? /*#__PURE__*/React.createElement(Loader2, {
     className: "animate-spin",
     size: 14
@@ -3264,7 +3428,9 @@ function App() {
   }, "সেভ ও সিংক করুন"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowFamilyCodeModal(false),
     className: "flex-1 h-9 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold"
-  }, "বাতিল")))), showFamilyCodeInfoModal && /*#__PURE__*/React.createElement("div", {
+  }, "বাতিল")))), showGoogleAccountModal && /*#__PURE__*/React.createElement(GoogleAccountModal, {
+    onClose: () => setShowGoogleAccountModal(false)
+  }), showFamilyCodeInfoModal && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
@@ -3602,6 +3768,114 @@ function FieldGroup({
     })));
   })));
 }
+// --- Google Account Linking (fully optional) ---
+// Default flow stays zero-login: every device auto-signs-in anonymously, no
+// screen, no friction (see bottom of file). A person MAY optionally link
+// their anonymous session to a real Google account from the menu. Linking
+// (not switching) keeps the exact same Firebase Auth uid, so any members
+// already claimed on this device stay claimed — nothing about existing data
+// changes. The benefit of linking: that uid becomes tied to the Google
+// account instead of this one device/browser cache, so signing in with the
+// same Google account on a different device (or after clearing this
+// device's cache) recovers the same identity — no re-claiming needed.
+//
+// Redirect-based flows survive a full page reload, so any pending
+// action/result is remembered across that reload via localStorage.
+const googleProvider = new firebase.auth.GoogleAuthProvider();
+function isGoogleLinked() {
+  return !!(auth.currentUser && auth.currentUser.providerData.some(p => p.providerId === "google.com"));
+}
+function linkGoogleAccount() {
+  localStorage.setItem("google_auth_pending", "link");
+  return auth.currentUser.linkWithRedirect(googleProvider);
+}
+function recoverWithGoogleAccount() {
+  localStorage.setItem("google_auth_pending", "signin");
+  return auth.signInWithRedirect(googleProvider);
+}
+function unlinkGoogleAccount() {
+  return auth.currentUser.unlink("google.com");
+}
+function GoogleAccountModal({
+  onClose
+}) {
+  const [linked, setLinked] = useState(isGoogleLinked());
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState(null);
+  useEffect(() => {
+    const raw = localStorage.getItem("google_auth_notice");
+    if (raw) {
+      localStorage.removeItem("google_auth_notice");
+      if (raw === "link_success") setNotice({
+        type: "ok",
+        text: "Google অ্যাকাউন্ট সফলভাবে যুক্ত হয়েছে!"
+      });else if (raw === "signin_success") setNotice({
+        type: "ok",
+        text: "Google অ্যাকাউন্ট দিয়ে সাইন ইন সফল হয়েছে — আগের ডাটা ফিরে এসেছে।"
+      });else if (raw.startsWith("error:")) setNotice({
+        type: "error",
+        text: "সমস্যা হয়েছে: " + raw.slice(6)
+      });
+    }
+    setLinked(isGoogleLinked());
+  }, []);
+  async function handleUnlink() {
+    if (!window.confirm("Google অ্যাকাউন্টের সাথে সংযোগ বিচ্ছিন্ন করতে চান? এই ডিভাইসের ডাটা এখানেই থাকবে, শুধু অন্য ডিভাইস থেকে আর এই একাউন্ট দিয়ে ফিরে আসা যাবে না।")) return;
+    setBusy(true);
+    try {
+      await unlinkGoogleAccount();
+      setLinked(false);
+    } catch (err) {
+      setNotice({
+        type: "error",
+        text: "সংযোগ বিচ্ছিন্ন করতে সমস্যা হয়েছে: " + err.message
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-800 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(InfoIcon, {
+    size: 16,
+    color: "var(--theme-primary)"
+  }), " Google অ্যাকাউন্ট (ঐচ্ছিক)"), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 18,
+    className: "text-slate-400"
+  }))), notice && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mb-3 " + (notice.type === "ok" ? "text-emerald-700" : "text-red-600")
+  }, notice.text), linked ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-1"
+  }, "এই ডিভাইস সংযুক্ত আছে:"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-bold text-emerald-900 mb-4"
+  }, auth.currentUser && auth.currentUser.email), /*#__PURE__*/React.createElement("button", {
+    onClick: handleUnlink,
+    disabled: busy,
+    className: "w-full h-9 bg-red-50 text-red-600 border border-red-200 rounded-xl text-xs font-bold disabled:opacity-60"
+  }, "সংযোগ বিচ্ছিন্ন করুন")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-2"
+  }, "কোড দিয়েই অ্যাপ ব্যবহার করা যথেষ্ট — Google যুক্ত করা সম্পূর্ণ ঐচ্ছিক। যুক্ত করলে যা সুবিধা:"), /*#__PURE__*/React.createElement("ul", {
+    className: "text-xs text-slate-600 leading-relaxed mb-4 space-y-1 list-disc pl-4"
+  }, /*#__PURE__*/React.createElement("li", null, "ফোনের ক্যাশ/ডাটা মুছে গেলে বা নতুন ফোনে গেলেও একই Google একাউন্ট দিয়ে সাইন ইন করলে আপনার claim করা সদস্যদের দায়িত্ব ফিরে পাবেন — নতুন করে \"দায়িত্ব নিন\" চাপতে হবে না।"), /*#__PURE__*/React.createElement("li", null, "একাধিক ডিভাইস (যেমন ফোন ও কম্পিউটার) থেকে একই পরিচয়ে কাজ করতে পারবেন।")), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: linkGoogleAccount,
+    disabled: busy,
+    className: "w-full h-9 bg-emerald-800 text-white rounded-xl text-xs font-bold disabled:opacity-60"
+  }, "এই ডিভাইসে Google যুক্ত করুন"), /*#__PURE__*/React.createElement("button", {
+    onClick: recoverWithGoogleAccount,
+    disabled: busy,
+    className: "w-full h-9 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold disabled:opacity-60"
+  }, "আগে যুক্ত করা একাউন্ট দিয়ে সাইন ইন করুন (রিকভারি)")))));
+}
 function mountApp() {
   const container = document.getElementById("root");
   const root = ReactDOM.createRoot(container);
@@ -3609,16 +3883,35 @@ function mountApp() {
 }
 
 // --- Anonymous Authentication (background, no login UI) ---
-// We wait for a signed-in user before mounting so every Firestore
-// call the app makes already has request.auth != null.
+// Zero-login by default: we wait for a signed-in (anonymous, or previously
+// Google-linked) user before mounting so every Firestore call the app makes
+// already has request.auth != null. getRedirectResult() is checked first so
+// an optional Google link/recovery action (which reloads the page) can
+// leave a result/notice behind for the Google Account modal to show.
+auth.getRedirectResult().then(result => {
+  const pending = localStorage.getItem("google_auth_pending");
+  localStorage.removeItem("google_auth_pending");
+  if (result && result.user && pending) {
+    localStorage.setItem("google_auth_notice", pending === "link" ? "link_success" : "signin_success");
+  }
+}).catch(err => {
+  localStorage.removeItem("google_auth_pending");
+  localStorage.setItem("google_auth_notice", "error:" + (err.message || err.code || "unknown"));
+});
+let appMounted = false;
+function bootOnce() {
+  if (appMounted) return;
+  appMounted = true;
+  mountApp();
+}
 const unsubscribeAuth = auth.onAuthStateChanged(user => {
   if (user) {
     unsubscribeAuth();
-    mountApp();
+    bootOnce();
   }
 });
 auth.signInAnonymously().catch(err => {
   console.error("Anonymous sign-in failed:", err);
   unsubscribeAuth();
-  mountApp(); // don't leave the user stuck on a blank screen
+  bootOnce(); // don't leave the user stuck on a blank screen
 });
