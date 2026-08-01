@@ -1455,26 +1455,9 @@ async function fetchEntryHistory(memberId, key) {
     return [];
   }
 }
-async function loadMonthEntries(memberId, year, month0) {
-  const prefix = `entry:${memberId}:${monthPrefix(year, month0)}`;
-  try {
-    const res = await appStorage.list(prefix, true);
-    if (!res || !res.keys) return {};
-    const out = {};
-    await Promise.all(res.keys.map(async k => {
-      try {
-        const r = await appStorage.get(k, true);
-        if (r) {
-          const day = k.split(":").pop();
-          out[day] = JSON.parse(r.value);
-        }
-      } catch {}
-    }));
-    return out;
-  } catch {
-    return {};
-  }
-}
+// Note: month entries are no longer fetched with a one-off list+get batch
+// (loadMonthEntries) — the live onSnapshot subscription in App's
+// monthEntries effect replaced it, so that unused function was removed.
 function StarMark({
   size = 18,
   color = "#C89B3C"
@@ -3447,8 +3430,18 @@ function App() {
     size: 18,
     className: "text-slate-400"
   }))), /*#__PURE__*/React.createElement("p", {
-    className: "text-xs text-slate-600 leading-relaxed mb-4"
-  }, "পরিবারের সবার অ্যাপে হুবহু একই ফ্যামিলি কোড সেট করলে সবার আমল ও তথ্যের হিসাব স্বয়ংক্রিয়ভাবে এক জায়গায় সিঙ্ক হবে। কোডে ছোট/বড় হাতের ইংরেজি অক্ষর, সংখ্যা ও বিশেষ চিহ্ন ব্যবহার করা যাবে, কমপক্ষে ৯ ক্যারেক্টার — যত জটিল ও দীর্ঘ কোড, ততই নিরাপদ, কারণ অন্য কেউ অনুমান করে আপনার ডাটা দেখতে পারবে না। ⚠️ কোডটি case-sensitive — অর্থাৎ ছোট ও বড় হাতের অক্ষর আলাদা হিসেবে গণ্য হয়, তাই পরিবারের সবাইকে ঠিক একই বানানে (হুবহু case মিলিয়ে) কোডটি বসাতে হবে, নাহলে আলাদা ডাটা স্পেস তৈরি হয়ে যাবে। নিরাপত্তা ও ব্যক্তিগত গোপনীয়তা বজায় রাখতে কাস্টম কোড সেট করার পর এটি গোপন (Masked) করে রাখা হবে। কোডটি দেখতে ডট টেক্সটের ওপর ট্যাপ বা ক্লিক করুন।"), /*#__PURE__*/React.createElement("button", {
+    className: "text-xs text-slate-600 leading-relaxed mb-3"
+  }, "একটি ইউনিক ফ্যামিলি কোড তৈরি করুন (যেমন: Fam-Khan@2026)। পরিবারের সবাই একই কোড ব্যবহার করলে সবার ডাটা স্বয়ংক্রিয়ভাবে সিংক হবে।"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-bold text-slate-800 mb-1.5"
+  }, "নিয়ম:"), /*#__PURE__*/React.createElement("ul", {
+    className: "text-xs text-slate-600 leading-relaxed mb-3 space-y-1 list-disc pl-4"
+  }, /*#__PURE__*/React.createElement("li", null, "কোড কমপক্ষে ৯ অক্ষরের হতে হবে।"), /*#__PURE__*/React.createElement("li", null, "ইংরেজি বড়/ছোট হাতের অক্ষর, সংখ্যা ও বিশেষ চিহ্ন ব্যবহার করা যাবে।"), /*#__PURE__*/React.createElement("li", null, "Space, / (স্ল্যাশ), \\ (ব্যাকস্ল্যাশ) এবং ' \" (কোটেশন চিহ্ন) ব্যবহার করা যাবে না।"), /*#__PURE__*/React.createElement("li", null, "কোডটি স্বয়ংক্রিয়ভাবে masked (••••) থাকবে — দেখতে চাইলে ডটের ওপর ট্যাপ করুন।")), /*#__PURE__*/React.createElement("div", {
+    className: "bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-bold text-amber-900 mb-1"
+  }, "বিশেষ দ্রষ্টব্য:"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-amber-900/90 leading-relaxed"
+  }, "ডাটা সিংক হওয়ার পর \"সদস্যবৃন্দ\" তালিকায় আপনার নাম দেখা যাবে — সেখানে আপনার নামের পাশে \"দায়িত্ব নিন\" বাটনে ট্যাপ করুন।")), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowFamilyCodeInfoModal(false),
     className: "w-full h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
   }, "বুঝেছি"))), showMemberInfoModal && /*#__PURE__*/React.createElement("div", {
@@ -3584,7 +3577,7 @@ function App() {
     className: "text-slate-400"
   }))), /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-600 space-y-2.5 leading-relaxed font-medium"
-  }, /*#__PURE__*/React.createElement("p", null, "১. কাস্টম ফ্যামিলি কোড তৈরি করে পরিবারের সকল সদস্যের ডিভাইসে একই কোড বসিয়ে ডাটা রিয়েল-টাইমে সিংক করুন।"), /*#__PURE__*/React.createElement("p", null, "২. প্রতিদিনের আমল ও কাজগুলো টিক চিহ্ন বা সংখ্যা দিয়ে পূরণ করুন। \"সেভ\" বাটনে চাপ দেওয়ার পর সবুজ টিক (✓) দেখা মানেই ডাটা সিংক হয়েছে।"), /*#__PURE__*/React.createElement("p", null, "৩. মাসের শেষে দৈনিক রিপোর্ট, সাপ্তাহিক রিফ্লেকশন এবং পারিবারিক সভার কার্যপরিধি — সবকিছু একসাথে ২ পৃষ্ঠার PDF ফাইল হিসেবে প্রিন্ট/সেভ দেওয়া যাবে।"), /*#__PURE__*/React.createElement("p", null, "৪. প্রিন্ট কপির বাম পাশে পাঞ্চ মার্জিন রাখা হয়েছে যা ফাইলে বাইন্ডিং করার উপযুক্ত।"), /*#__PURE__*/React.createElement("p", null, "৫. মেনু থেকে \"এক্সপোর্ট\" করে পুরো পরিবারের ডাটার একটি ব্যাকআপ (.json) ফাইল ডাউনলোড করে রাখুন। প্রয়োজনে একই মেনু থেকে \"ইম্পোর্ট\" করে তা ফিরিয়ে আনা যাবে।"), /*#__PURE__*/React.createElement("p", null, "৬. সেভ বা এক্সপোর্ট করার সময় \"সমস্যা হয়েছে\" জাতীয় বার্তা দেখালে সেটি সাধারণত ইন্টারনেট সংযোগ বা ডাটাবেজ পারমিশনের সমস্যা — এমন হলে আবার চেষ্টা করুন, সমস্যা থাকলে ফিডব্যাক অপশনে জানান।"), /*#__PURE__*/React.createElement("p", null, "৭. অ্যাপটির সকল ফিচার সঠিকভাবে ব্যবহার করতে বিভিন্ন অপশনের পাশে থাকা ⓘ (ইনফো) আইকনে ট্যাপ করে নির্দেশনাগুলো পড়ে নিন।")), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("p", null, "১. কাস্টম ফ্যামিলি কোড তৈরি করে পরিবারের সকল সদস্যের ডিভাইসে একই কোড বসিয়ে ডাটা রিয়েল-টাইমে সিংক করুন।"), /*#__PURE__*/React.createElement("p", null, "২. মাসের শেষে দৈনিক রিপোর্ট, সাপ্তাহিক রিফ্লেকশন এবং পারিবারিক সভার কার্যপরিধি — সবকিছু একসাথে ২ পৃষ্ঠার PDF ফাইল হিসেবে প্রিন্ট/সেভ দেওয়া যাবে।"), /*#__PURE__*/React.createElement("p", null, "৩. প্রিন্ট কপির বাম পাশে পাঞ্চ মার্জিন রাখা হয়েছে যা ফাইলে বাইন্ডিং করার উপযুক্ত।"), /*#__PURE__*/React.createElement("p", null, "৪. মেনু থেকে \"এক্সপোর্ট\" করে পুরো পরিবারের ডাটার একটি ব্যাকআপ (.json) ফাইল ডাউনলোড করে রাখুন। প্রয়োজনে একই মেনু থেকে \"ইম্পোর্ট\" করে তা ফিরিয়ে আনা যাবে।"), /*#__PURE__*/React.createElement("p", null, "৫. অ্যাপটির সকল ফিচার সঠিকভাবে ব্যবহার করতে বিভিন্ন অপশনের পাশে থাকা ⓘ (ইনফো) আইকনে ট্যাপ করে নির্দেশনাগুলো পড়ে নিন।")), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowHelpModal(false),
     className: "w-full mt-5 h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
   }, "বুঝেছি"))), showFeedbackModal && /*#__PURE__*/React.createElement("div", {
@@ -3785,16 +3778,24 @@ const googleProvider = new firebase.auth.GoogleAuthProvider();
 function isGoogleLinked() {
   return !!(auth.currentUser && auth.currentUser.providerData.some(p => p.providerId === "google.com"));
 }
+// Popup instead of redirect: a redirect round-trip depends on session/local
+// storage surviving the navigation away to Google and back, which silently
+// fails on browsers that partition storage for third-party contexts (this
+// is now the default in Safari and increasingly Chrome/Firefox) — the
+// classic symptom is "I picked my Google account, it came back, and
+// nothing changed." Popup resolves the promise directly on this same page,
+// so it doesn't depend on that storage round-trip surviving.
 function linkGoogleAccount() {
-  localStorage.setItem("google_auth_pending", "link");
-  return auth.currentUser.linkWithRedirect(googleProvider);
+  return auth.currentUser.linkWithPopup(googleProvider);
 }
 function recoverWithGoogleAccount() {
-  localStorage.setItem("google_auth_pending", "signin");
-  return auth.signInWithRedirect(googleProvider);
+  return auth.signInWithPopup(googleProvider);
 }
 function unlinkGoogleAccount() {
   return auth.currentUser.unlink("google.com");
+}
+function signOutToFreshAnonymous() {
+  return auth.signOut().then(() => auth.signInAnonymously());
 }
 function GoogleAccountModal({
   onClose
@@ -3803,22 +3804,57 @@ function GoogleAccountModal({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
   useEffect(() => {
-    const raw = localStorage.getItem("google_auth_notice");
-    if (raw) {
-      localStorage.removeItem("google_auth_notice");
-      if (raw === "link_success") setNotice({
-        type: "ok",
-        text: "Google অ্যাকাউন্ট সফলভাবে যুক্ত হয়েছে!"
-      });else if (raw === "signin_success") setNotice({
-        type: "ok",
-        text: "Google অ্যাকাউন্ট দিয়ে সাইন ইন সফল হয়েছে — আগের ডাটা ফিরে এসেছে।"
-      });else if (raw.startsWith("error:")) setNotice({
-        type: "error",
-        text: "সমস্যা হয়েছে: " + raw.slice(6)
-      });
-    }
     setLinked(isGoogleLinked());
   }, []);
+  async function handleLink() {
+    setBusy(true);
+    setNotice(null);
+    try {
+      await linkGoogleAccount();
+      setLinked(true);
+      setNotice({
+        type: "ok",
+        text: "Google অ্যাকাউন্ট সফলভাবে যুক্ত হয়েছে!"
+      });
+    } catch (err) {
+      if (err && err.code === "auth/popup-closed-by-user") {
+        // ব্যবহারকারী নিজেই পপআপ বন্ধ করেছেন — কোনো বার্তা দরকার নেই
+      } else if (err && err.code === "auth/credential-already-in-use") {
+        setNotice({
+          type: "error",
+          text: "এই Google অ্যাকাউন্টটি ইতোমধ্যে অন্য একটি ডিভাইস/প্রোফাইলের সাথে যুক্ত আছে। এটির ডাটা ফিরে পেতে নিচের \"আগে যুক্ত করা একাউন্ট দিয়ে সাইন ইন করুন\" অপশনটি ব্যবহার করুন।"
+        });
+      } else {
+        setNotice({
+          type: "error",
+          text: "সমস্যা হয়েছে: " + (err && (err.message || err.code))
+        });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function handleRecover() {
+    setBusy(true);
+    setNotice(null);
+    try {
+      await recoverWithGoogleAccount();
+      setLinked(true);
+      setNotice({
+        type: "ok",
+        text: "Google অ্যাকাউন্ট দিয়ে সাইন ইন সফল হয়েছে — আগের ডাটা ফিরে এসেছে।"
+      });
+    } catch (err) {
+      if (!err || err.code !== "auth/popup-closed-by-user") {
+        setNotice({
+          type: "error",
+          text: "সমস্যা হয়েছে: " + (err && (err.message || err.code))
+        });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
   async function handleUnlink() {
     if (!window.confirm("Google অ্যাকাউন্টের সাথে সংযোগ বিচ্ছিন্ন করতে চান? এই ডিভাইসের ডাটা এখানেই থাকবে, শুধু অন্য ডিভাইস থেকে আর এই একাউন্ট দিয়ে ফিরে আসা যাবে না।")) return;
     setBusy(true);
@@ -3831,6 +3867,21 @@ function GoogleAccountModal({
         text: "সংযোগ বিচ্ছিন্ন করতে সমস্যা হয়েছে: " + err.message
       });
     } finally {
+      setBusy(false);
+    }
+  }
+  async function handleSignOut() {
+    if (!window.confirm("সাইন আউট করতে চান? সাইন আউটের পর এই ডিভাইসটি একটি নতুন, আলাদা (আনক্লেইমড) পরিচয়ে চলবে — আগে \"দায়িত্ব নেওয়া\" সদস্যদের এডিট-অধিকার এই ডিভাইসে আর থাকবে না, যতক্ষণ না আপনি একই Google অ্যাকাউন্ট দিয়ে আবার \"রিকভারি\" সাইন ইন করেন। এগিয়ে যাবেন?")) return;
+    setBusy(true);
+    try {
+      await signOutToFreshAnonymous();
+      onClose();
+      window.location.reload();
+    } catch (err) {
+      setNotice({
+        type: "error",
+        text: "সাইন আউট করতে সমস্যা হয়েছে: " + err.message
+      });
       setBusy(false);
     }
   }
@@ -3856,22 +3907,31 @@ function GoogleAccountModal({
     className: "text-xs text-slate-600 leading-relaxed mb-1"
   }, "এই ডিভাইস সংযুক্ত আছে:"), /*#__PURE__*/React.createElement("p", {
     className: "text-sm font-bold text-emerald-900 mb-4"
-  }, auth.currentUser && auth.currentUser.email), /*#__PURE__*/React.createElement("button", {
+  }, auth.currentUser && auth.currentUser.email), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: handleSignOut,
+    disabled: busy,
+    className: "w-full h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold disabled:opacity-60"
+  }, "সাইন আউট করুন"), /*#__PURE__*/React.createElement("button", {
     onClick: handleUnlink,
     disabled: busy,
     className: "w-full h-9 bg-red-50 text-red-600 border border-red-200 rounded-xl text-xs font-bold disabled:opacity-60"
-  }, "সংযোগ বিচ্ছিন্ন করুন")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+  }, "সংযোগ বিচ্ছিন্ন করুন (Unlink)"))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-600 leading-relaxed mb-2"
-  }, "কোড দিয়েই অ্যাপ ব্যবহার করা যথেষ্ট — Google যুক্ত করা সম্পূর্ণ ঐচ্ছিক। যুক্ত করলে যা সুবিধা:"), /*#__PURE__*/React.createElement("ul", {
+  }, "Google অ্যাকাউন্টে সাইন ইন না করেও অ্যাপটি ব্যবহার করা যাবে। তবে সাইন ইন করলে নিম্নোক্ত সুবিধা পাওয়া যাবে:"), /*#__PURE__*/React.createElement("ul", {
     className: "text-xs text-slate-600 leading-relaxed mb-4 space-y-1 list-disc pl-4"
-  }, /*#__PURE__*/React.createElement("li", null, "ফোনের ক্যাশ/ডাটা মুছে গেলে বা নতুন ফোনে গেলেও একই Google একাউন্ট দিয়ে সাইন ইন করলে আপনার claim করা সদস্যদের দায়িত্ব ফিরে পাবেন — নতুন করে \"দায়িত্ব নিন\" চাপতে হবে না।"), /*#__PURE__*/React.createElement("li", null, "একাধিক ডিভাইস (যেমন ফোন ও কম্পিউটার) থেকে একই পরিচয়ে কাজ করতে পারবেন।")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("span", { className: "font-bold" }, "রিকভারি:"), " নতুন ফোনে বা ডাটা মুছে গেলে একই Google অ্যাকাউন্টে সাইন ইন করলেই সদস্যপদ স্বয়ংক্রিয়ভাবে ফিরে আসবে।"), /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("span", { className: "font-bold" }, "মাল্টি-ডিভাইস:"), " একই Google অ্যাকাউন্ট দিয়ে একাধিক ডিভাইস (ফোন, ট্যাব, কম্পিউটার) থেকে ব্যবহার করা যাবে।")), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-col gap-2"
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: linkGoogleAccount,
+    onClick: handleLink,
     disabled: busy,
-    className: "w-full h-9 bg-emerald-800 text-white rounded-xl text-xs font-bold disabled:opacity-60"
-  }, "এই ডিভাইসে Google যুক্ত করুন"), /*#__PURE__*/React.createElement("button", {
-    onClick: recoverWithGoogleAccount,
+    className: "w-full h-9 bg-emerald-800 text-white rounded-xl text-xs font-bold disabled:opacity-60 flex items-center justify-center gap-2"
+  }, busy ? /*#__PURE__*/React.createElement(Loader2, {
+    className: "animate-spin",
+    size: 14
+  }) : null, " Google দিয়ে সাইন ইন করুন"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleRecover,
     disabled: busy,
     className: "w-full h-9 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold disabled:opacity-60"
   }, "আগে যুক্ত করা একাউন্ট দিয়ে সাইন ইন করুন (রিকভারি)")))));
@@ -3888,30 +3948,30 @@ function mountApp() {
 // already has request.auth != null. getRedirectResult() is checked first so
 // an optional Google link/recovery action (which reloads the page) can
 // leave a result/notice behind for the Google Account modal to show.
-auth.getRedirectResult().then(result => {
-  const pending = localStorage.getItem("google_auth_pending");
-  localStorage.removeItem("google_auth_pending");
-  if (result && result.user && pending) {
-    localStorage.setItem("google_auth_notice", pending === "link" ? "link_success" : "signin_success");
-  }
-}).catch(err => {
-  localStorage.removeItem("google_auth_pending");
-  localStorage.setItem("google_auth_notice", "error:" + (err.message || err.code || "unknown"));
-});
 let appMounted = false;
 function bootOnce() {
   if (appMounted) return;
   appMounted = true;
   mountApp();
 }
+// Wait for Firebase to report the REAL restored session (anonymous,
+// Google-linked, or none) before deciding whether a fresh anonymous
+// sign-in is needed. The old code called signInAnonymously()
+// unconditionally, in parallel with this restore — if it ran before the
+// persisted (possibly Google-linked) user had finished loading, it could
+// create a brand-new anonymous identity and silently throw away the link,
+// which is exactly the "picked my Google account, it came back looking
+// like before" symptom. Now we only sign in anonymously if, after
+// Firebase reports its true state, there is genuinely no user yet.
 const unsubscribeAuth = auth.onAuthStateChanged(user => {
-  if (user) {
-    unsubscribeAuth();
-    bootOnce();
-  }
-});
-auth.signInAnonymously().catch(err => {
-  console.error("Anonymous sign-in failed:", err);
   unsubscribeAuth();
-  bootOnce(); // don't leave the user stuck on a blank screen
+  if (user) {
+    bootOnce();
+  } else {
+    auth.signInAnonymously().catch(err => {
+      console.error("Anonymous sign-in failed:", err);
+    }).finally(() => {
+      bootOnce(); // don't leave the user stuck on a blank screen
+    });
+  }
 });
