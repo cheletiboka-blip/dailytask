@@ -1,13 +1,5 @@
-const CACHE = "daily-task-v4";
-const ASSETS = [
-  "/",
-  "/index.html",
-  "/manifest.json",
-  "/icon-192.png",
-  "/icon-512.png",
-  "/app.js",
-  "/app.css"
-];
+const CACHE = "daily-task-v3";
+const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png", "./app.js", "./app.css"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
@@ -36,49 +28,31 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
 
-  // URL Normalization for Cache matching
-  const requestUrl = new URL(e.request.url);
-
   e.respondWith(
-    caches.match(e.request).then((cachedResponse) => {
-      // ১. ক্যাশে থাকলে সরাসরি ক্যাশ থেকেই ফেরত দেবে (অফলাইন ও প্রসেস বন্ধ থাকলেও চলবে)
-      if (cachedResponse) {
-        // ব্যাকগ্রাউন্ডে সাইলেন্ট আপডেট
-        fetch(e.request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200 && requestUrl.origin === self.location.origin) {
-              const clone = networkResponse.clone();
-              caches.open(CACHE).then((cache) => cache.put(e.request, clone));
-            }
-          })
-          .catch(() => {
-            /* অফলাইনে থাকলে ব্যাকগ্রাউন্ড এরর ইগনোর করবে */
-          });
-
-        return cachedResponse;
-      }
-
-      // ২. ক্যাশে না থাকলে নেটওয়ার্ক থেকে আনবে
-      return fetch(e.request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200 && requestUrl.origin === self.location.origin) {
-            const clone = networkResponse.clone();
+    caches.match(e.request).then((cached) => {
+      const fetchPromise = fetch(e.request)
+        .then((res) => {
+          if (res && res.status === 200 && e.request.url.startsWith(self.location.origin)) {
+            const clone = res.clone();
             caches.open(CACHE).then((cache) => cache.put(e.request, clone));
           }
-          return networkResponse;
+          return res;
         })
         .catch(async () => {
-          // ৩. নেটওয়ার্ক ব্যর্থ হলে (ERR_FAILED বা অফলাইন) ফ্যালব্যাক পেজ দেখাবে
+          if (cached) return cached;
+          // Offline fallback for page navigations
           if (e.request.mode === "navigate") {
-            const fallback = (await caches.match("/index.html")) || (await caches.match("/"));
+            const fallback = await caches.match("./index.html");
             if (fallback) return fallback;
           }
           return new Response("Offline and no cached version available.", {
             status: 503,
             statusText: "Service Unavailable",
-            headers: { "Content-Type": "text/plain; charset=utf-8" },
+            headers: { "Content-Type": "text/plain" },
           });
         });
+
+      return cached || fetchPromise;
     })
   );
 });
