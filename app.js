@@ -19,14 +19,7 @@ firebase.appCheck().activate(
 );
 
 const db = firebase.firestore();
-// Uses the newer persistentLocalCache API instead of the deprecated
-// enableIndexedDbPersistence() — same single-tab offline persistence
-// behavior, just without the SDK's deprecation warning in the console.
-db.settings({
-  localCache: firebase.firestore.persistentLocalCache({
-    tabManager: firebase.firestore.persistentSingleTabManager({ forceOwnership: false })
-  })
-});
+db.enablePersistence().catch(() => {});
 const auth = firebase.auth();
 
 // Feedback submission — powered by Web3Forms (no server/coding needed).

@@ -10,6 +10,22 @@
 <link rel="apple-touch-icon" href="icon-192.png" />
 
 <!-- Tailwind CSS -->
+<script>
+  // Suppresses two known-safe, cosmetic console warnings:
+  // 1) Tailwind's "should not be used in production" CDN notice.
+  // 2) Firestore's enableIndexedDbPersistence() deprecation notice
+  //    (app.js intentionally keeps using this proven API; only the
+  //    console noise is hidden here, behavior is unchanged).
+  (function () {
+    const _origWarn = console.warn;
+    console.warn = function (...args) {
+      const first = args[0];
+      if (typeof first === "string" && first.includes("cdn.tailwindcss.com")) return;
+      if (typeof first === "string" && first.includes("enableIndexedDbPersistence")) return;
+      _origWarn.apply(console, args);
+    };
+  })();
+</script>
 <script src="https://cdn.tailwindcss.com"></script>
 
 <!-- React 18 -->
