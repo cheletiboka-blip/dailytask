@@ -19,7 +19,11 @@ firebase.appCheck().activate(
 );
 
 const db = firebase.firestore();
-db.enablePersistence().catch(() => {});
+db.settings({
+  localCache: firebase.firestore.persistentLocalCache({
+    tabManager: firebase.firestore.persistentSingleTabManager({ forceOwnership: false })
+  })
+});
 const auth = firebase.auth();
 
 // Feedback submission — powered by Web3Forms (no server/coding needed).
