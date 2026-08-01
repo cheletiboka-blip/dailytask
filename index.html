@@ -18,10 +18,16 @@
   //    console noise is hidden here, behavior is unchanged).
   (function () {
     const _origWarn = console.warn;
+    const SUPPRESSED_SUBSTRINGS = [
+      "cdn.tailwindcss.com",
+      "enableIndexedDbPersistence",
+      "Failed to obtain exclusive access to the persistence layer",
+    ];
     console.warn = function (...args) {
-      const first = args[0];
-      if (typeof first === "string" && first.includes("cdn.tailwindcss.com")) return;
-      if (typeof first === "string" && first.includes("enableIndexedDbPersistence")) return;
+      const combined = args
+        .map((a) => (typeof a === "string" ? a : (a && a.message) || ""))
+        .join(" ");
+      if (SUPPRESSED_SUBSTRINGS.some((s) => combined.includes(s))) return;
       _origWarn.apply(console, args);
     };
   })();
