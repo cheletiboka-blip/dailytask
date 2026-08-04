@@ -2020,24 +2020,84 @@ function App() {
         try {
           const parsed = JSON.parse(event.target.result);
           const colRef = db.collection(getCollectionName());
+          const myUid = auth.currentUser ? auth.currentUser.uid : null;
+
+          // নতুন Firestore rules-এ entry:/weekly: ডকুমেন্ট সংশ্লিষ্ট
+          // member-এর *বর্তমান* owner অনুযায়ী লেখা যায়। ব্যাকআপে যদি অন্য
+          // ডিভাইসের claim করা সদস্যের এন্ট্রি থাকে, সেগুলো লিখতে গেলে
+          // পুরো batch (atomic) ব্যর্থ হয়ে যাবে — তাই ইম্পোর্টের আগে
+          // বর্তমান মালিকানা যাচাই করে শুধু নিজের/unclaimed সদস্যদের ডাটা
+          // পাঠানো হচ্ছে; বাকিগুলো স্কিপ করে ব্যবহারকারীকে জানানো হচ্ছে।
+          const currentMembers = await loadMembersV2();
+          const ownerByMemberId = {};
+          currentMembers.forEach(m => {
+            ownerByMemberId[m.id] = m.ownerUid ?? null;
+          });
+          function isMineOrUnclaimed(uid) {
+            return !uid || uid === myUid;
+          }
+
           const keys = Object.keys(parsed);
+          const memberKeys = [];
+          const otherKeys = [];
+          const skippedKeys = [];
+          keys.forEach(key => {
+            const parts = key.split(":");
+            const isMemberScoped = parts[0] === "entry" || parts[0] === "weekly" || parts[0] === "member";
+            const memberId = isMemberScoped ? parts[1] : null;
+
+            // এই memberId ইতিমধ্যে এই ফ্যামিলি কোডে Firestore-এ বিদ্যমান
+            // এবং অন্য একটি (সক্রিয়) ডিভাইসের claim করা — সেই সদস্যের
+            // কোনো ডাটা ওভাররাইট করা যাবে না।
+            if (memberId !== null && Object.prototype.hasOwnProperty.call(ownerByMemberId, memberId) && !isMineOrUnclaimed(ownerByMemberId[memberId])) {
+              skippedKeys.push(key);
+              return;
+            }
+
+            if (parts[0] === "member") {
+              // নতুন/অজানা সদস্যের ownerUid ব্যাকআপ থেকে হুবহু কপি না করে
+              // normalize করা হচ্ছে (এই ডিভাইসের uid অথবা unclaimed/null)।
+              // এটা ছাড়া ব্যাকআপে থাকা পুরনো ডিভাইসের uid — যেমন একটি
+              // নতুন খালি ফ্যামিলি কোডে ইম্পোর্ট করার সময় — Firestore
+              // rules দ্বারা reject হয়ে পুরো ব্যাচই ব্যর্থ হয়ে যেত।
+              const backupOwner = parsed[key].ownerUid ?? null;
+              const normalizedOwner = backupOwner === myUid ? myUid : null;
+              memberKeys.push({ key, data: { ...parsed[key], ownerUid: normalizedOwner } });
+            } else {
+              otherKeys.push({ key, data: parsed[key] });
+            }
+          });
+
           // Firestore-এর একটা batch-এ সর্বোচ্চ ৫০০টি write অপারেশন করা যায়।
           // একাধিক সদস্য/কয়েক মাসের ডাটায় ডকুমেন্ট সংখ্যা সহজেই ৫০০ ছাড়িয়ে
           // যায়, তখন আগে পুরো ইম্পোর্টই ব্যর্থ হয়ে যেত। এখন ৪৫০-এর চাংকে
           // ভাগ করে একাধিক ব্যাচে কমিট করা হচ্ছে যাতে যেকোনো সাইজের
           // ব্যাকআপ নিরাপদে ইম্পোর্ট হয়।
           const CHUNK_SIZE = 450;
-          for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
-            const batch = db.batch();
-            keys.slice(i, i + CHUNK_SIZE).forEach(key => {
-              batch.set(colRef.doc(key), parsed[key]);
-            });
-            await batch.commit();
+          async function commitInChunks(items) {
+            for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+              const batch = db.batch();
+              items.slice(i, i + CHUNK_SIZE).forEach(({ key, data }) => {
+                batch.set(colRef.doc(key), data);
+              });
+              await batch.commit();
+            }
           }
-          alert("ডাটা সফলভাবে ইম্পোর্ট করা হয়েছে!");
+          // ধাপ ১: member: ডকুমেন্টগুলো আগে কমিট করে ownership normalize
+          // করা হচ্ছে, তারপর ধাপ ২-এ entry:/weekly: — কারণ entry/weekly
+          // লেখার অনুমতি সংশ্লিষ্ট member ডকুমেন্টের *বর্তমান* (এই মুহূর্তে
+          // Firestore-এ থাকা) ownerUid দেখে নির্ধারিত হয় (firestore.rules
+          // এর currentMemberOwner() দেখুন)।
+          await commitInChunks(memberKeys);
+          await commitInChunks(otherKeys);
+          if (skippedKeys.length) {
+            alert(`ডাটা ইম্পোর্ট হয়েছে। তবে ${skippedKeys.length}টি এন্ট্রি স্কিপ করা হয়েছে, কারণ সেগুলো অন্য ডিভাইসের দায়িত্বে থাকা সদস্যের — সেগুলো সেই সদস্যের নিজের ডিভাইস থেকে ইম্পোর্ট করতে হবে।`);
+          } else {
+            alert("ডাটা সফলভাবে ইম্পোর্ট করা হয়েছে!");
+          }
           window.location.reload();
         } catch (err) {
-          alert("ভুল ব্যাকআপ ফাইল: " + err.message);
+          alert("ইম্পোর্ট করতে সমস্যা হয়েছে (ভুল ব্যাকআপ ফাইল হতে পারে): " + err.message);
         }
       };
     }
@@ -2269,6 +2329,17 @@ function App() {
     }
   }
   async function handleReleaseMember(m) {
+    // Firestore rules-এ isUnownedOrMine() চেক করে — অন্য ডিভাইসের claim
+    // করা সদস্যকে release করার চেষ্টা করলে সার্ভার সবসময় reject করবে
+    // (UI আগে "সংরক্ষিত" বাটনে এই একই ফাংশন কল করত, ফলে ব্যর্থ Firestore
+    // রিকোয়েস্টের পর একটা অস্পষ্ট এরর দেখাত)। এখন আগে থেকেই চেক করে
+    // স্পষ্ট বার্তা দেখানো হচ্ছে, যাতে ব্যবহারকারী বুঝতে পারে এটা কেন
+    // সম্ভব নয় এবং কী করতে হবে।
+    const myUid = auth.currentUser ? auth.currentUser.uid : null;
+    if (m.ownerUid && m.ownerUid !== myUid) {
+      alert(`"${m.name}"-এর দায়িত্ব বর্তমানে অন্য একটি ডিভাইসে আছে — এই সদস্যের দায়িত্ব শুধুমাত্র সেই ডিভাইস থেকেই ছাড়া যাবে, এখান থেকে সম্ভব নয়।`);
+      return;
+    }
     const ok = window.confirm(`"${m.name}"-এর দায়িত্ব ছেড়ে দিতে চান? এরপর যেকোনো সাইন-ইন করা ডিভাইস এই সদস্যের দায়িত্ব নিতে পারবে।`);
     if (!ok) return;
     try {
@@ -2990,10 +3061,11 @@ function App() {
       setShowGoogleAccountModal(true);
       setIsMenuOpen(false);
     },
-    className: "w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+    className: "w-full text-left px-4 py-2 hover:bg-amber-50 flex items-center gap-2 text-amber-800 font-semibold"
   }, /*#__PURE__*/React.createElement(InfoIcon, {
-    size: 14
-  }), " Google অ্যাকাউন্ট (ঐচ্ছিক)")))))), /*#__PURE__*/React.createElement("div", {
+    size: 14,
+    color: "#C89B3C"
+  }), " Google অ্যাকাউন্ট (রিকমন্ডেড)")))))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mt-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm",
@@ -4032,8 +4104,8 @@ function GoogleAccountModal({
     className: "font-bold text-sm text-slate-800 flex items-center gap-2"
   }, /*#__PURE__*/React.createElement(InfoIcon, {
     size: 16,
-    color: "var(--theme-primary)"
-  }), " Google অ্যাকাউন্ট (ঐচ্ছিক)"), /*#__PURE__*/React.createElement("button", {
+    color: "#C89B3C"
+  }), " Google অ্যাকাউন্ট (রিকমন্ডেড)"), /*#__PURE__*/React.createElement("button", {
     onClick: onClose
   }, /*#__PURE__*/React.createElement(X, {
     size: 18,
@@ -4041,14 +4113,16 @@ function GoogleAccountModal({
   }))), notice && /*#__PURE__*/React.createElement("p", {
     className: "text-xs mb-3 " + (notice.type === "ok" ? "text-emerald-700" : "text-red-600")
   }, notice.text), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-bold text-slate-800 mb-2"
+  }, "Google দিয়ে সাইন ইন করার সুবিধা:"), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-600 leading-relaxed mb-2"
-  }, "Google অ্যাকাউন্টে সাইন ইন না করেও অ্যাপটি ব্যবহার করা যাবে। তবে সাইন ইন করলে নিম্নোক্ত সুবিধা পাওয়া যাবে:"), /*#__PURE__*/React.createElement("ul", {
-    className: "text-xs text-slate-600 leading-relaxed mb-4 space-y-1 list-disc pl-4"
-  }, /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("span", {
+  }, "Google-এ সাইন ইন করা বাধ্যতামূলক নয়। তবে ফোন নষ্ট বা পরিবর্তন হলে, ব্রাউজারের ক্যাশ/ডাটা মুছে গেলে, অথবা অ্যাপ আনইনস্টল করে পুনরায় ইনস্টল করার পর একই Google অ্যাকাউন্টে সাইন ইন করলেই সদস্যপদ, দায়িত্ব (Claim) এবং এডিট-অধিকার স্বয়ংক্রিয়ভাবে ফিরে আসবে।"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-2"
+  }, "Google-এ সাইন ইন না থাকলে, উপরোক্ত পরিস্থিতিতে অ্যাপের ডাটা, সদস্যপদ ও এডিট-অধিকার হারানোর (Data Loss) সম্ভাবনা থাকে।"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-4"
+  }, /*#__PURE__*/React.createElement("span", {
     className: "font-bold"
-  }, "রিকভারি:"), " নতুন ফোনে বা ডাটা মুছে গেলে একই Google অ্যাকাউন্টে সাইন ইন করলেই সদস্যপদ স্বয়ংক্রিয়ভাবে ফিরে আসবে।"), /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("span", {
-    className: "font-bold"
-  }, "মাল্টি-ডিভাইস:"), " একই Google অ্যাকাউন্ট দিয়ে একাধিক ডিভাইস (ফোন, ট্যাব, কম্পিউটার) থেকে ব্যবহার করা যাবে।")), /*#__PURE__*/React.createElement("button", {
+  }, "মাল্টি-ডিভাইস সাপোর্ট:"), " একই Google অ্যাকাউন্ট ব্যবহার করে একাধিক ডিভাইস (ফোন, ট্যাবলেট বা কম্পিউটার) থেকে নিরাপদে অ্যাপটি ব্যবহার করা যাবে।"), /*#__PURE__*/React.createElement("button", {
     onClick: handleLink,
     disabled: busy,
     className: "w-full h-9 bg-emerald-800 text-white rounded-xl text-xs font-bold disabled:opacity-60 flex items-center justify-center gap-2"
