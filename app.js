@@ -1641,25 +1641,31 @@ function ProgressChart({
   const chartInstance = useRef(null);
   useEffect(() => {
     if (!chartRef.current) return;
-    const weekLabels = ["সপ্তাহ ১", "সপ্তাহ ২", "সপ্তাহ ৩", "সপ্তাহ ৪", "সপ্তাহ ৫"];
-    const weekScores = [];
-    for (let w = 0; w < 5; w++) {
-      const startDay = w * 7 + 1;
-      const endDay = Math.min(startDay + 6, totalDays);
+    // আগে এখানে সবসময় হার্ডকোডেড ৫টি সপ্তাহ প্লট করা হতো, ফলে ২৮ দিনের
+    // ফেব্রুয়ারির মতো মাসে অস্তিত্বহীন "সপ্তাহ ৫" ভুলভাবে ০% হিসেবে দেখাতো।
+    // getWeekRanges() ব্যবহার করে এখন শুধু ঐ মাসে আসলে যে কয়টা সপ্তাহ আছে
+    // (৪ বা ৫) সেটাই প্লট হবে — সাপ্তাহিক রিফ্লেকশন টেবিল ও প্রিন্ট PDF-এ
+    // এই একই ফাংশন যেভাবে ব্যবহৃত হয়, সেভাবে।
+    const weekRanges = getWeekRanges(totalDays);
+    const weekLabels = weekRanges.map(({
+      week
+    }) => `সপ্তাহ ${toBn(week)}`);
+    const weekScores = weekRanges.map(({
+      start,
+      end
+    }) => {
       let sum = 0;
       let count = 0;
-      if (startDay <= totalDays) {
-        for (let d = startDay; d <= endDay; d++) {
-          const e = monthEntries[pad2(d)];
-          const s = dailyScore(e, member, allFields);
-          if (s !== null) {
-            sum += s;
-            count += 1;
-          }
+      for (let d = start; d <= end; d++) {
+        const e = monthEntries[pad2(d)];
+        const s = dailyScore(e, member, allFields);
+        if (s !== null) {
+          sum += s;
+          count += 1;
         }
       }
-      weekScores.push(count ? Math.round(sum / count * 100) : 0);
-    }
+      return count ? Math.round(sum / count * 100) : 0;
+    });
     if (chartInstance.current) {
       chartInstance.current.destroy();
     }
@@ -2013,13 +2019,21 @@ function App() {
       fileReader.onload = async event => {
         try {
           const parsed = JSON.parse(event.target.result);
-          const batch = db.batch();
           const colRef = db.collection(getCollectionName());
-          Object.keys(parsed).forEach(key => {
-            const docRef = colRef.doc(key);
-            batch.set(docRef, parsed[key]);
-          });
-          await batch.commit();
+          const keys = Object.keys(parsed);
+          // Firestore-এর একটা batch-এ সর্বোচ্চ ৫০০টি write অপারেশন করা যায়।
+          // একাধিক সদস্য/কয়েক মাসের ডাটায় ডকুমেন্ট সংখ্যা সহজেই ৫০০ ছাড়িয়ে
+          // যায়, তখন আগে পুরো ইম্পোর্টই ব্যর্থ হয়ে যেত। এখন ৪৫০-এর চাংকে
+          // ভাগ করে একাধিক ব্যাচে কমিট করা হচ্ছে যাতে যেকোনো সাইজের
+          // ব্যাকআপ নিরাপদে ইম্পোর্ট হয়।
+          const CHUNK_SIZE = 450;
+          for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
+            const batch = db.batch();
+            keys.slice(i, i + CHUNK_SIZE).forEach(key => {
+              batch.set(colRef.doc(key), parsed[key]);
+            });
+            await batch.commit();
+          }
           alert("ডাটা সফলভাবে ইম্পোর্ট করা হয়েছে!");
           window.location.reload();
         } catch (err) {
@@ -2045,8 +2059,12 @@ function App() {
       return;
     }
     try {
-      const doc = await db.collection(`data_${code}`).doc("members").get();
-      const msg = doc.exists
+      // আগে শুধু legacy "members" ডকুমেন্ট চেক করা হতো, কিন্তু v2 (per-member
+      // member:<id>) সিস্টেমে সেই ডকুমেন্ট আর কখনো লেখা হয় না — ফলে আসলে
+      // ডাটা থাকা সত্ত্বেও এই চেক সবসময় "কোনো পুরনো রেকর্ড নেই" দেখাতো।
+      // এখন কালেকশনে আদৌ কোনো ডকুমেন্ট আছে কিনা তা সরাসরি চেক করা হচ্ছে।
+      const snap = await db.collection(`data_${code}`).limit(1).get();
+      const msg = !snap.empty
         ? "এই কোডে আগের রেকর্ড পাওয়া গেছে — এতে সুইচ করলে সেই ডাটা ফিরে আসবে। এগিয়ে যাবেন?"
         : "এই কোডে কোনো পুরনো রেকর্ড নেই — এটি নতুন খালি ফ্যামিলি স্পেস হবে। এগিয়ে যাবেন?";
       if (!window.confirm(msg)) return;
@@ -2216,6 +2234,14 @@ function App() {
     }
   }
   async function handleRemoveMember(m) {
+    // Firestore rules এখন ownerUid-ভিত্তিক isUnownedOrMine() চেক করে delete
+    // অনুমতি দেয় — অন্য ডিভাইসের claim করা সদস্য মুছতে গেলে সার্ভার সেটা
+    // reject করবে। আগে থেকে একই চেক না করলে UI optimistically সদস্যকে
+    // লিস্ট থেকে সরিয়ে ফেলত, অথচ আসল ডিলিট ব্যর্থ হতো — বিভ্রান্তিকর।
+    if (m.ownerUid && (!auth.currentUser || m.ownerUid !== auth.currentUser.uid)) {
+      alert("এই সদস্যের দায়িত্ব অন্য ডিভাইসে আছে — এখান থেকে বাদ দেওয়া যাবে না। প্রথমে সেই ডিভাইস থেকে দায়িত্ব ছাড়তে বলুন, তারপর বাদ দিন।");
+      return;
+    }
     const ok = window.confirm(`আপনি কি নিশ্চিত "${m.name}" কে সদস্য তালিকা থেকে বাদ দিতে চান? এই সদস্যের নাম আর দেখা যাবে না, তবে পূর্বের সেভ করা ডাটা মুছে যাবে না।`);
     if (!ok) return;
     const next = (members || []).filter(x => x.id !== m.id);
@@ -2259,7 +2285,13 @@ function App() {
     setIsMenuOpen(false);
     setShowAccountMenu(false);
     try {
-      await signOutToFreshAnonymous();
+      // পূর্বে এখানে signOutToFreshAnonymous() (auth.signOut() + নতুন
+      // signInAnonymously()) কল হতো, যা একটা সম্পূর্ণ নতুন Firebase uid
+      // তৈরি করত। এতে এই ডিভাইসে আগে claim করা সদস্যদের ownerUid-এর সাথে
+      // নতুন uid আর মিলত না — ফলে "সাইন আউট" করার পরই দিনের এন্ট্রি
+      // এডিট করা বন্ধ হয়ে যেত (device-claim লক)। শুধু Google লিংক সরালে
+      // (unlink) একই uid বজায় থাকে, তাই আগের এডিট-অধিকার অক্ষুণ্ণ থাকে।
+      await unlinkGoogleAccount();
       window.location.reload();
     } catch (err) {
       alert("সাইন আউট করতে সমস্যা হয়েছে: " + err.message);
@@ -2267,8 +2299,10 @@ function App() {
   }
   async function handleDeleteGoogleAccount() {
     try {
+      // একই কারণে এখানেও অতিরিক্ত signOutToFreshAnonymous() কল বাদ দেওয়া
+      // হয়েছে — unlinkGoogleAccount() একাই যথেষ্ট এবং একই ডিভাইস uid
+      // বজায় রাখে, তাই সদস্যদের এডিট-অধিকার অক্ষুণ্ণ থাকে।
       await unlinkGoogleAccount();
-      await signOutToFreshAnonymous();
       setShowDeleteAccountWarning(false);
       window.alert("গুগল অ্যাকাউন্ট সফলভাবে রিমুভ করা হয়েছে এবং সাইন আউট সম্পন্ন হয়েছে। আপনার অ্যাপের সম্পূর্ণ ডাটা নিরাপদে আপনার ফ্যামিলি কাস্টম কোডের সাথে সংরক্ষিত আছে।");
       window.location.reload();
