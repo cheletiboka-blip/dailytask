@@ -5,9 +5,30 @@ const firebaseConfig = {
   projectId: "daily-task-family",
   storageBucket: "daily-task-family.firebasestorage.app",
   messagingSenderId: "10031644603",
-  appId: "1:10031644603:web:afaf01434c65147d988e9e"
+  appId: "1:10031644603:web:afaf01434c65147d988e9e",
+  measurementId: "G-G8EDTPLW52"
 };
 firebase.initializeApp(firebaseConfig);
+
+// --- Firebase Analytics ---
+// Wrapped in try/catch because Analytics can fail to init in environments
+// without a real browser context (e.g. some in-app webviews) or when the
+// firebase-analytics-compat.js script hasn't loaded — a failure here must
+// never block the rest of the app from booting.
+let analytics = null;
+try {
+  analytics = firebase.analytics();
+} catch (e) {
+  console.error("Firebase Analytics init failed:", e);
+}
+// Small helper so every call site doesn't need its own null-check/try-catch.
+function logAnalyticsEvent(name, params) {
+  try {
+    if (analytics) analytics.logEvent(name, params);
+  } catch (e) {
+    // Analytics is a best-effort convenience layer — never throw from here.
+  }
+}
 
 // --- Firebase App Check (reCAPTCHA v3) ---
 // Runs completely in the background — no puzzle, no visible UI for the user.
@@ -166,6 +187,30 @@ if ("serviceWorker" in navigator) {
     }).catch(() => {});
   });
 }
+
+// --- PWA Install Tracking ---
+// beforeinstallprompt fires when the browser is willing to show its own
+// "Add to Home Screen" prompt — we don't build a custom install button here,
+// just record that the prompt became available and keep a reference in case
+// a future UI wants to trigger it manually.
+let deferredInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", e => {
+  deferredInstallPrompt = e;
+  logAnalyticsEvent("pwa_install_prompt_shown");
+});
+// appinstalled fires once the user actually completes installation
+// (regardless of whether it was via the browser's own prompt or an OS-level
+// "Add to Home Screen" flow) — this is the actual install-count signal.
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  logAnalyticsEvent("pwa_installed");
+  db.collection("app_stats").doc("pwa_installs").set({
+    count: firebase.firestore.FieldValue.increment(1),
+    lastInstalledAt: Date.now()
+  }, {
+    merge: true
+  }).catch(() => {});
+});
 const {
   useState,
   useEffect,
@@ -396,6 +441,26 @@ function Trash({
     points: "3 6 5 6 21 6"
   }), /*#__PURE__*/React.createElement("path", {
     d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+  }));
+}
+function LogOutIcon({
+  size,
+  color,
+  className
+}) {
+  return /*#__PURE__*/React.createElement(Icon, {
+    size: size,
+    color: color,
+    className: className
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
+  }), /*#__PURE__*/React.createElement("polyline", {
+    points: "16 17 21 12 16 7"
+  }), /*#__PURE__*/React.createElement("line", {
+    x1: "21",
+    y1: "12",
+    x2: "9",
+    y2: "12"
   }));
 }
 function MenuIcon({
@@ -720,22 +785,22 @@ function useThemeColor() {
 }
 const DEFAULT_DEEN_FIELDS = [{
   key: "fardPrayers",
-  label: "ফরজ কাযা নামাজ (কয় ওয়াক্ত?)",
+  label: "ফরজ কাযা সালাত (কয় ওয়াক্ত?)",
   shortLabel: "ফরজ কাযা",
   type: "count",
   max: 5,
   excusable: true
 }, {
   key: "jamaat",
-  label: "জামায়াতে নামাজ (কয় ওয়াক্ত?)",
-  shortLabel: "জামায়াতে নামাজ",
+  label: "জামায়াতে সালাত (কয় ওয়াক্ত?)",
+  shortLabel: "জামায়াতে সালাত",
   type: "count",
   max: 5,
   appliesTo: "male",
   excusable: true
 }, {
   key: "sunnahNafl",
-  label: "সুন্নত/নফল নামাজ",
+  label: "সুন্নত ও নফল সালাত",
   shortLabel: "সুন্নত/নফল",
   type: "bool",
   excusable: true
@@ -752,7 +817,7 @@ const DEFAULT_DEEN_FIELDS = [{
   type: "bool"
 }, {
   key: "dhikr",
-  label: "ইস্তেগফার/যিকির/দরুদ শরীফ/দু'আ",
+  label: "ইস্তেগফার, যিকির, দরুদ শরীফ ও দু'আ",
   shortLabel: "যিকির/দু'আ",
   type: "bool"
 }, {
@@ -773,7 +838,7 @@ const DEFAULT_DEEN_FIELDS = [{
   type: "bool"
 }, {
   key: "taleem",
-  label: "তালিম/পাঠচক্র",
+  label: "তালিম/পাঠচক্র/দ্বীনি সোহবত",
   shortLabel: "তালিম",
   type: "bool"
 }, {
@@ -799,7 +864,7 @@ const DEFAULT_DUNIYA_FIELDS = [{
   type: "bool"
 }, {
   key: "healthyFood",
-  label: "স্বাস্থ্যকর খাবার",
+  label: "অপ্রক্রিয়াজাত ও স্বাস্থ্যকর খাবার",
   shortLabel: "স্বাস্থ্যকর খাবার",
   type: "bool"
 }, {
@@ -1189,7 +1254,12 @@ function dailyScore(entry, member, allFields) {
     if (f.type === "bool") {
       sum += entry[f.key] ? 1 : 0;
     } else if (f.type === "count") {
-      sum += Math.min(f.max, Number(entry[f.key]) || 0) / f.max;
+      const capped = Math.min(f.max, Number(entry[f.key]) || 0);
+      // fardPrayers-এর কাউন্ট আসলে "কাযা" (মিসড) ওয়াক্তের সংখ্যা — তাই
+      // বেশি সংখ্যা মানে কম ওয়াক্ত সময়মতো পড়া হয়েছে, অর্থাৎ স্কোর কম
+      // হওয়া উচিত (ইনভার্টেড)। বাকি "count" টাইপ ফিল্ড (যেমন জামায়াতে
+      // সালাত) স্বাভাবিক — বেশি সংখ্যা মানে বেশি স্কোর।
+      sum += f.key === "fardPrayers" ? (f.max - capped) / f.max : capped / f.max;
     } else if (f.type === "number") {
       if (f.target) {
         sum += Math.min(f.target, Number(entry[f.key]) || 0) / f.target;
@@ -1226,7 +1296,9 @@ function fieldPercent(field, monthEntries, totalDays, member) {
     for (let d = 1; d <= totalDays; d++) {
       const e = monthEntries[pad2(d)];
       if (excusableHere && isExcused(e, field.key)) continue;
-      sum += Math.min(field.max, Number(e?.[field.key]) || 0);
+      const capped = Math.min(field.max, Number(e?.[field.key]) || 0);
+      // fardPrayers-এর জন্য ইনভার্টেড — dailyScore-এর মতো একই কারণে।
+      sum += field.key === "fardPrayers" ? field.max - capped : capped;
     }
     return Math.round(sum / (effectiveDays * field.max) * 100);
   }
@@ -1691,6 +1763,8 @@ function App() {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showFamilyCodeModal, setShowFamilyCodeModal] = useState(false);
   const [showGoogleAccountModal, setShowGoogleAccountModal] = useState(false);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [showDeleteAccountWarning, setShowDeleteAccountWarning] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [archiveYear, setArchiveYear] = useState(() => new Date().getFullYear());
   const [archiveMonth0, setArchiveMonth0] = useState(() => new Date().getMonth());
@@ -1735,6 +1809,13 @@ function App() {
     (async () => {
       const m = await migrateMembersIfNeeded();
       setMembers(m);
+      // Fires once per app load (not per re-render) so the Analytics
+      // dashboard can show how many distinct family spaces are actively
+      // syncing data, without generating noise on every state change.
+      logAnalyticsEvent("family_active", {
+        family_code: getFamilyCode(),
+        member_count: m.length
+      });
       const cf = await loadCustomFields();
       setCustomFields(cf);
       let last = null;
@@ -2172,6 +2253,27 @@ function App() {
       } : x));
     } catch (err) {
       alert("দায়িত্ব ছাড়তে সমস্যা হয়েছে: " + err.message);
+    }
+  }
+  async function handleGoogleSignOut() {
+    setIsMenuOpen(false);
+    setShowAccountMenu(false);
+    try {
+      await signOutToFreshAnonymous();
+      window.location.reload();
+    } catch (err) {
+      alert("সাইন আউট করতে সমস্যা হয়েছে: " + err.message);
+    }
+  }
+  async function handleDeleteGoogleAccount() {
+    try {
+      await unlinkGoogleAccount();
+      await signOutToFreshAnonymous();
+      setShowDeleteAccountWarning(false);
+      window.alert("গুগল অ্যাকাউন্ট সফলভাবে রিমুভ করা হয়েছে এবং সাইন আউট সম্পন্ন হয়েছে। আপনার অ্যাপের সম্পূর্ণ ডাটা নিরাপদে আপনার ফ্যামিলি কাস্টম কোডের সাথে সংরক্ষিত আছে।");
+      window.location.reload();
+    } catch (err) {
+      window.alert("একাউন্ট ডিলিট করতে সমস্যা হয়েছে: " + (err && err.message));
     }
   }
   function updateField(key, value) {
@@ -2814,19 +2916,50 @@ function App() {
     className: "w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700 font-medium text-emerald-800"
   }, /*#__PURE__*/React.createElement(MessageSquare, {
     size: 14
-  }), " আমাদের জানান (পরামর্শ)"), /*#__PURE__*/React.createElement("button", {
+  }), " আমাদের জানান (পরামর্শ)"), isGoogleLinked() ? /*#__PURE__*/React.createElement("div", {
+    className: "relative"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setShowAccountMenu(v => !v);
+    },
+    className: "w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center justify-between text-slate-700"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "flex items-center gap-2 font-semibold text-emerald-900 truncate max-w-[160px]"
+  }, /*#__PURE__*/React.createElement(User, {
+    size: 14
+  }), " ", (auth.currentUser && (auth.currentUser.displayName || auth.currentUser.email)) || "Google ব্যবহারকারী"), /*#__PURE__*/React.createElement("span", {
+    className: "flex items-center gap-1.5 shrink-0"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-2 h-2 rounded-full bg-emerald-500"
+  }), /*#__PURE__*/React.createElement(ChevronDown, {
+    size: 12,
+    className: `transition-transform duration-200 ${showAccountMenu ? "rotate-180" : ""}`
+  }))), showAccountMenu && /*#__PURE__*/React.createElement("div", {
+    className: "border-t border-slate-100 bg-slate-50/60"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: handleGoogleSignOut,
+    className: "w-full text-left pl-9 pr-4 py-2 hover:bg-slate-100 flex items-center gap-2 text-slate-700 text-xs"
+  }, /*#__PURE__*/React.createElement(LogOutIcon, {
+    size: 13
+  }), " সাইন আউট"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setShowAccountMenu(false);
+      setShowDeleteAccountWarning(true);
+    },
+    className: "w-full text-left pl-9 pr-4 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600 text-xs"
+  }, /*#__PURE__*/React.createElement(Trash, {
+    size: 13
+  }), " ডিলিট গুগল একাউন্ট"))) : /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       setShowGoogleAccountModal(true);
       setIsMenuOpen(false);
     },
-    className: "w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center justify-between text-slate-700"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "flex items-center gap-2"
+    className: "w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
   }, /*#__PURE__*/React.createElement(InfoIcon, {
     size: 14
-  }), " Google অ্যাকাউন্ট (ঐচ্ছিক)"), isGoogleLinked() && /*#__PURE__*/React.createElement("span", {
-    className: "w-2 h-2 rounded-full bg-emerald-600"
-  }))))))), /*#__PURE__*/React.createElement("div", {
+  }), " Google অ্যাকাউন্ট (ঐচ্ছিক)")))))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mt-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm",
@@ -3413,7 +3546,27 @@ function App() {
     className: "flex-1 h-9 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold"
   }, "বাতিল")))), showGoogleAccountModal && /*#__PURE__*/React.createElement(GoogleAccountModal, {
     onClose: () => setShowGoogleAccountModal(false)
-  }), showFamilyCodeInfoModal && /*#__PURE__*/React.createElement("div", {
+  }), showDeleteAccountWarning && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 mb-3"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-2xl"
+  }, "⚠️"), /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-800"
+  }, "গুগল একাউন্ট ডিলিট নিশ্চিত করুন")), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-4"
+  }, "এটি আপনার ডিভাইস থেকে গুগল অ্যাকাউন্ট সরিয়ে ফেলবে এবং সাইন আউট করে দেবে। তবে এতে আপনার অ্যাপের মূল ডাটার কোনো ক্ষতি হবে না — আপনার সম্পূর্ণ ডাটা নিরাপদে আপনার ফ্যামিলি কাস্টম কোডের সাথে সংরক্ষিত থাকবে।"), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowDeleteAccountWarning(false),
+    className: "flex-1 h-9 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold"
+  }, "বাতিল"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleDeleteGoogleAccount,
+    className: "flex-1 h-9 bg-red-600 text-white rounded-xl text-xs font-bold"
+  }, "হ্যাঁ, ডিলিট করুন")))), showFamilyCodeInfoModal && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
@@ -3788,9 +3941,6 @@ function isGoogleLinked() {
 function linkGoogleAccount() {
   return auth.currentUser.linkWithPopup(googleProvider);
 }
-function recoverWithGoogleAccount() {
-  return auth.signInWithPopup(googleProvider);
-}
 function unlinkGoogleAccount() {
   return auth.currentUser.unlink("google.com");
 }
@@ -3800,29 +3950,21 @@ function signOutToFreshAnonymous() {
 function GoogleAccountModal({
   onClose
 }) {
-  const [linked, setLinked] = useState(isGoogleLinked());
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
-  useEffect(() => {
-    setLinked(isGoogleLinked());
-  }, []);
   async function handleLink() {
     setBusy(true);
     setNotice(null);
     try {
       await linkGoogleAccount();
-      setLinked(true);
-      setNotice({
-        type: "ok",
-        text: "Google অ্যাকাউন্ট সফলভাবে যুক্ত হয়েছে!"
-      });
+      onClose();
     } catch (err) {
       if (err && err.code === "auth/popup-closed-by-user") {
         // ব্যবহারকারী নিজেই পপআপ বন্ধ করেছেন — কোনো বার্তা দরকার নেই
       } else if (err && err.code === "auth/credential-already-in-use") {
         setNotice({
           type: "error",
-          text: "এই Google অ্যাকাউন্টটি ইতোমধ্যে অন্য একটি ডিভাইস/প্রোফাইলের সাথে যুক্ত আছে। এটির ডাটা ফিরে পেতে নিচের \"আগে যুক্ত করা একাউন্ট দিয়ে সাইন ইন করুন\" অপশনটি ব্যবহার করুন।"
+          text: "এই Google অ্যাকাউন্টটি ইতোমধ্যে অন্য একটি ডিভাইস/প্রোফাইলের সাথে যুক্ত আছে। ভিন্ন একটি Google অ্যাকাউন্ট দিয়ে চেষ্টা করুন।"
         });
       } else {
         setNotice({
@@ -3831,57 +3973,6 @@ function GoogleAccountModal({
         });
       }
     } finally {
-      setBusy(false);
-    }
-  }
-  async function handleRecover() {
-    setBusy(true);
-    setNotice(null);
-    try {
-      await recoverWithGoogleAccount();
-      setLinked(true);
-      setNotice({
-        type: "ok",
-        text: "Google অ্যাকাউন্ট দিয়ে সাইন ইন সফল হয়েছে — আগের ডাটা ফিরে এসেছে।"
-      });
-    } catch (err) {
-      if (!err || err.code !== "auth/popup-closed-by-user") {
-        setNotice({
-          type: "error",
-          text: "সমস্যা হয়েছে: " + (err && (err.message || err.code))
-        });
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function handleUnlink() {
-    if (!window.confirm("Google অ্যাকাউন্টের সাথে সংযোগ বিচ্ছিন্ন করতে চান? এই ডিভাইসের ডাটা এখানেই থাকবে, শুধু অন্য ডিভাইস থেকে আর এই একাউন্ট দিয়ে ফিরে আসা যাবে না।")) return;
-    setBusy(true);
-    try {
-      await unlinkGoogleAccount();
-      setLinked(false);
-    } catch (err) {
-      setNotice({
-        type: "error",
-        text: "সংযোগ বিচ্ছিন্ন করতে সমস্যা হয়েছে: " + err.message
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function handleSignOut() {
-    if (!window.confirm("সাইন আউট করতে চান? সাইন আউটের পর এই ডিভাইসটি একটি নতুন, আলাদা (আনক্লেইমড) পরিচয়ে চলবে — আগে \"দায়িত্ব নেওয়া\" সদস্যদের এডিট-অধিকার এই ডিভাইসে আর থাকবে না, যতক্ষণ না আপনি একই Google অ্যাকাউন্ট দিয়ে আবার \"রিকভারি\" সাইন ইন করেন। এগিয়ে যাবেন?")) return;
-    setBusy(true);
-    try {
-      await signOutToFreshAnonymous();
-      onClose();
-      window.location.reload();
-    } catch (err) {
-      setNotice({
-        type: "error",
-        text: "সাইন আউট করতে সমস্যা হয়েছে: " + err.message
-      });
       setBusy(false);
     }
   }
@@ -3903,38 +3994,22 @@ function GoogleAccountModal({
     className: "text-slate-400"
   }))), notice && /*#__PURE__*/React.createElement("p", {
     className: "text-xs mb-3 " + (notice.type === "ok" ? "text-emerald-700" : "text-red-600")
-  }, notice.text), linked ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
-    className: "text-xs text-slate-600 leading-relaxed mb-1"
-  }, "এই ডিভাইস সংযুক্ত আছে:"), /*#__PURE__*/React.createElement("p", {
-    className: "text-sm font-bold text-emerald-900 mb-4"
-  }, auth.currentUser && auth.currentUser.email), /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col gap-2"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: handleSignOut,
-    disabled: busy,
-    className: "w-full h-9 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold disabled:opacity-60"
-  }, "সাইন আউট করুন"), /*#__PURE__*/React.createElement("button", {
-    onClick: handleUnlink,
-    disabled: busy,
-    className: "w-full h-9 bg-red-50 text-red-600 border border-red-200 rounded-xl text-xs font-bold disabled:opacity-60"
-  }, "সংযোগ বিচ্ছিন্ন করুন (Unlink)"))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+  }, notice.text), /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-600 leading-relaxed mb-2"
   }, "Google অ্যাকাউন্টে সাইন ইন না করেও অ্যাপটি ব্যবহার করা যাবে। তবে সাইন ইন করলে নিম্নোক্ত সুবিধা পাওয়া যাবে:"), /*#__PURE__*/React.createElement("ul", {
     className: "text-xs text-slate-600 leading-relaxed mb-4 space-y-1 list-disc pl-4"
-  }, /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("span", { className: "font-bold" }, "রিকভারি:"), " নতুন ফোনে বা ডাটা মুছে গেলে একই Google অ্যাকাউন্টে সাইন ইন করলেই সদস্যপদ স্বয়ংক্রিয়ভাবে ফিরে আসবে।"), /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("span", { className: "font-bold" }, "মাল্টি-ডিভাইস:"), " একই Google অ্যাকাউন্ট দিয়ে একাধিক ডিভাইস (ফোন, ট্যাব, কম্পিউটার) থেকে ব্যবহার করা যাবে।")), /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col gap-2"
-  }, /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("span", {
+    className: "font-bold"
+  }, "রিকভারি:"), " নতুন ফোনে বা ডাটা মুছে গেলে একই Google অ্যাকাউন্টে সাইন ইন করলেই সদস্যপদ স্বয়ংক্রিয়ভাবে ফিরে আসবে।"), /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("span", {
+    className: "font-bold"
+  }, "মাল্টি-ডিভাইস:"), " একই Google অ্যাকাউন্ট দিয়ে একাধিক ডিভাইস (ফোন, ট্যাব, কম্পিউটার) থেকে ব্যবহার করা যাবে।")), /*#__PURE__*/React.createElement("button", {
     onClick: handleLink,
     disabled: busy,
     className: "w-full h-9 bg-emerald-800 text-white rounded-xl text-xs font-bold disabled:opacity-60 flex items-center justify-center gap-2"
   }, busy ? /*#__PURE__*/React.createElement(Loader2, {
     className: "animate-spin",
     size: 14
-  }) : null, " Google দিয়ে সাইন ইন করুন"), /*#__PURE__*/React.createElement("button", {
-    onClick: handleRecover,
-    disabled: busy,
-    className: "w-full h-9 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold disabled:opacity-60"
-  }, "আগে যুক্ত করা একাউন্ট দিয়ে সাইন ইন করুন (রিকভারি)")))));
+  }) : null, " Google দিয়ে সাইন ইন করুন")));
 }
 function mountApp() {
   const container = document.getElementById("root");

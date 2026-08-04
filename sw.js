@@ -1,18 +1,27 @@
-const CACHE = "daily-task-v3";
-const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png", "./app.js", "./app.css"];
+const CACHE = "daily-task-v1";
+const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
+
+// Analytics/tracking requests must always hit the network directly — never
+// served from cache and never written into it. Caching these would return
+// stale beacons (or none at all when offline, which is fine for analytics
+// but wrong if we accidentally cached a real response) and would also
+// bloat the cache with third-party traffic the app doesn't own.
+const ANALYTICS_HOSTS = [
+  "google-analytics.com",
+  "analytics.google.com",
+  "googletagmanager.com",
+];
+function isAnalyticsRequest(url) {
+  try {
+    const host = new URL(url).hostname;
+    return ANALYTICS_HOSTS.some((h) => host === h || host.endsWith("." + h));
+  } catch {
+    return false;
+  }
+}
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((cache) =>
-      Promise.allSettled(
-        ASSETS.map((url) =>
-          cache.add(url).catch((err) => {
-            console.warn("Skipping asset (failed to cache):", url, err);
-          })
-        )
-      )
-    )
-  );
+  e.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
   self.skipWaiting();
 });
 
@@ -27,7 +36,13 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
-
+  if (isAnalyticsRequest(e.request.url)) {
+    // Bypass the cache entirely — go straight to the network, and don't
+    // fall back to a cached response on failure (there won't be one, and
+    // there shouldn't be).
+    e.respondWith(fetch(e.request));
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then((cached) => {
       const fetchPromise = fetch(e.request)
@@ -38,20 +53,7 @@ self.addEventListener("fetch", (e) => {
           }
           return res;
         })
-        .catch(async () => {
-          if (cached) return cached;
-          // Offline fallback for page navigations
-          if (e.request.mode === "navigate") {
-            const fallback = await caches.match("./index.html");
-            if (fallback) return fallback;
-          }
-          return new Response("Offline and no cached version available.", {
-            status: 503,
-            statusText: "Service Unavailable",
-            headers: { "Content-Type": "text/plain" },
-          });
-        });
-
+        .catch(() => cached);
       return cached || fetchPromise;
     })
   );
