@@ -3962,10 +3962,22 @@ function GoogleAccountModal({
       if (err && err.code === "auth/popup-closed-by-user") {
         // ব্যবহারকারী নিজেই পপআপ বন্ধ করেছেন — কোনো বার্তা দরকার নেই
       } else if (err && err.code === "auth/credential-already-in-use") {
-        setNotice({
-          type: "error",
-          text: "এই Google অ্যাকাউন্টটি ইতোমধ্যে অন্য একটি ডিভাইস/প্রোফাইলের সাথে যুক্ত আছে। ভিন্ন একটি Google অ্যাকাউন্ট দিয়ে চেষ্টা করুন।"
-        });
+        // এই Google অ্যাকাউন্ট আগে থেকেই অন্য একটি (সম্ভবত আগের সাইন-আউট
+        // হওয়া) সেশনের সাথে লিংক করা আছে — নতুন anonymous সেশনে আবার লিংক
+        // করা যাবে না। এক্ষেত্রে লিংক না করে সরাসরি সেই পুরনো Google-লিংকড
+        // অ্যাকাউন্টেই সাইন ইন করাই সঠিক "রিকভারি" পদ্ধতি — err.credential-এ
+        // Firebase নিজেই সেই ক্রেডেনশিয়াল দিয়ে দেয়।
+        try {
+          await auth.signInWithCredential(err.credential);
+          onClose();
+          window.location.reload();
+          return;
+        } catch (signInErr) {
+          setNotice({
+            type: "error",
+            text: "সাইন ইন করতে সমস্যা হয়েছে: " + (signInErr && (signInErr.message || signInErr.code))
+          });
+        }
       } else {
         setNotice({
           type: "error",
