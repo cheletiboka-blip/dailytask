@@ -172,6 +172,348 @@ const appStorage = {
     };
   }
 };
+
+// =====================================================================
+// --- Google Drive Backup & Restore (personal recovery, NOT family sync) ---
+// =====================================================================
+// এই মডিউলটি সম্পূর্ণ ঐচ্ছিক এবং ব্যক্তিগত (এই ডিভাইসে যে Google অ্যাকাউন্ট
+// লিংক করা আছে তার Drive-এ)। এটি পরিবারের রিয়েল-টাইম সিংকের বিকল্প নয় —
+// Firestore-ই সবসময় পরিবারের আসল ডাটার উৎস (source of truth) থাকবে। Drive
+// ব্যাকআপ শুধু ডিভাইস হারানো/পরিবর্তনের সময় রিকভারির জন্য।
+//
+// Auth approach: static PWA (কোনো ব্যাকএন্ড নেই) হওয়ায় Google-এর নিজস্ব
+// সুপারিশ অনুযায়ী Google Identity Services (GIS)-এর token client
+// (google.accounts.oauth2.initTokenClient) ব্যবহার করা হয়েছে — এটি Firebase
+// Auth-এর linkWithPopup()-এর accessToken থেকে আলাদা এবং প্রয়োজনমতো রিফ্রেশ
+// করা যায়। drive.file স্কোপ (non-sensitive) ব্যবহার করা হয়েছে, তাই অ্যাপ
+// শুধু নিজে তৈরি করা ফাইলটুকুই দেখতে/লিখতে পারে — ব্যবহারকারীর Drive-এর
+// বাকি কোনো ফাইলে অ্যাক্সেস নেই।
+//
+// !! সেটআপ প্রয়োজন (একবারই, কোডের বাইরে): Google Cloud Console-এ (একই
+// Firebase প্রজেক্টের সাথে সংযুক্ত GCP প্রজেক্ট) Drive API enable করে নিচের
+// GOOGLE_DRIVE_CLIENT_ID-এর জায়গায় Firebase Google Sign-In-এর জন্য
+// অটো-তৈরি হওয়া Web OAuth Client ID বসাতে হবে (Cloud Console → APIs &
+// Services → Credentials → "Web client (auto created by Google Service)"),
+// এবং সেই ক্লায়েন্টের Authorized JavaScript origins-এ অ্যাপের ডোমেইন
+// (যেমন https://dailytask-family.pages.dev) যোগ করতে হবে।
+const GOOGLE_DRIVE_CLIENT_ID = "10031644603-a8i21oh9sookntt70k3qvr29t2ns3s9h.apps.googleusercontent.com";
+const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const DRIVE_BACKUP_FILE_NAME = "daily_task_drive_backup.json";
+const DRIVE_BACKUP_SCHEMA_VERSION = 2;
+const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
+const DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3";
+
+let driveTokenClient = null;
+let driveAccessToken = null;
+let driveTokenExpiresAt = 0;
+
+function isGoogleDriveConfigured() {
+  return typeof google !== "undefined" && !!(google.accounts && google.accounts.oauth2) && !GOOGLE_DRIVE_CLIENT_ID.startsWith("YOUR_");
+}
+function ensureDriveTokenClient() {
+  if (driveTokenClient) return driveTokenClient;
+  driveTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_DRIVE_CLIENT_ID,
+    scope: GOOGLE_DRIVE_SCOPE,
+    callback: () => {}
+  });
+  return driveTokenClient;
+}
+// GIS-এর requestAccessToken() একটি popup খোলে বলে ব্রাউজারের popup-blocker
+// এড়াতে সাধারণত ইউজারের ক্লিক (gesture)-এর মধ্যেই কল করা উচিত। আগে একটি
+// "silent" (prompt: "") চেষ্টা করা হয় — আগে থেকেই অনুমতি দেওয়া থাকলে এটি
+// কোনো popup ছাড়াই কাজ করতে পারে; ব্যর্থ হলে সরাসরি consent popup দেখানো হয়।
+function requestDriveAccessToken(promptMode) {
+  return new Promise((resolve, reject) => {
+    const client = ensureDriveTokenClient();
+    client.callback = resp => {
+      if (resp && resp.access_token) {
+        driveAccessToken = resp.access_token;
+        driveTokenExpiresAt = Date.now() + (resp.expires_in ? resp.expires_in * 1000 : 3500 * 1000);
+        resolve(driveAccessToken);
+      } else {
+        reject(new Error((resp && resp.error) || "drive-auth-failed"));
+      }
+    };
+    client.error_callback = err => reject(err instanceof Error ? err : new Error((err && err.type) || "drive-auth-error"));
+    try {
+      client.requestAccessToken({ prompt: promptMode });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+async function getDriveAccessToken() {
+  if (!isGoogleDriveConfigured()) {
+    throw new Error("Google Drive ব্যাকআপ এখনো সেটআপ করা হয়নি।");
+  }
+  if (driveAccessToken && Date.now() < driveTokenExpiresAt - 60000) return driveAccessToken;
+  try {
+    return await requestDriveAccessToken("");
+  } catch {
+    return await requestDriveAccessToken("consent");
+  }
+}
+async function driveFetch(url, options) {
+  const token = await getDriveAccessToken();
+  const res = await fetch(url, {
+    ...(options || {}),
+    headers: {
+      ...((options && options.headers) || {}),
+      Authorization: `Bearer ${token}`
+    }
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Drive API error ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return res;
+}
+// এই Google অ্যাকাউন্টে আগে থেকে অ্যাপের তৈরি করা ব্যাকআপ ফাইল আছে কিনা
+// খুঁজে বের করে (নাম দিয়ে, familyCode নির্বিশেষে — এটাই নতুন ডিভাইসে
+// অন্য ফ্যামিলি কোডের ব্যাকআপ "detect" করার মূল উপায়)। প্রথমে এই ডিভাইসের
+// পরিচিত fileId (localStorage cache) দিয়ে দ্রুত চেষ্টা করা হয়, ব্যর্থ হলে
+// নাম দিয়ে খোঁজা হয়।
+async function findDriveBackupFile() {
+  const cacheKey = `drive_backup_file_id:${getFamilyCode()}`;
+  const cachedId = localStorage.getItem(cacheKey);
+  if (cachedId) {
+    try {
+      const res = await driveFetch(`${DRIVE_API_BASE}/files/${cachedId}?fields=id,name,modifiedTime,appProperties,trashed`);
+      const meta = await res.json();
+      if (!meta.trashed) return meta;
+    } catch {}
+    localStorage.removeItem(cacheKey);
+  }
+  const q = encodeURIComponent(`name='${DRIVE_BACKUP_FILE_NAME}' and trashed=false`);
+  const res = await driveFetch(`${DRIVE_API_BASE}/files?q=${q}&fields=files(id,name,modifiedTime,appProperties)&spaces=drive&pageSize=5`);
+  const json = await res.json();
+  const file = json.files && json.files[0];
+  return file || null;
+}
+// পুরো ফ্যামিলি Firestore কালেকশন + এই ডিভাইসের প্রয়োজনীয় সেটিংস একসাথে
+// করে একটি Versioned, Extensible ব্যাকআপ অবজেক্ট বানায়। ভবিষ্যতে
+// familyId/Family Metadata/Admin System যোগ হলে "family" অবজেক্টে নতুন
+// key যোগ করলেই হবে — schemaVersion বাড়িয়ে migration করা যাবে, পুরনো
+// ব্যাকআপ ফাইল ভাঙবে না।
+async function buildDriveBackupPayload() {
+  const snap = await db.collection(getCollectionName()).get();
+  const data = {};
+  snap.docs.forEach(doc => {
+    data[doc.id] = doc.data();
+  });
+  let isCustomCode = false;
+  let themeColor = null;
+  try {
+    isCustomCode = localStorage.getItem("family_code_is_custom") === "1";
+  } catch {}
+  try {
+    themeColor = localStorage.getItem("theme_color") || null;
+  } catch {}
+  return {
+    schemaVersion: DRIVE_BACKUP_SCHEMA_VERSION,
+    appVersion: "1.0.0",
+    backupTime: Date.now(),
+    family: {
+      familyCode: getFamilyCode(),
+      isCustomCode
+      // ভবিষ্যতে: familyId, memberIdVersion ইত্যাদি এখানে যোগ হবে
+    },
+    preferences: {
+      themeColor
+    },
+    data
+  };
+}
+// existingFileId দিলে সেই একই ফাইল আপডেট (PATCH) হয়, নাহলে নতুন ফাইল
+// তৈরি (POST) হয় — এভাবে সবসময় একটিমাত্র ফাইলই ব্যবহৃত হয়, প্রতিবার নতুন
+// ফাইল জমা হয় না। appProperties-এ familyCode রাখা হয় (Drive UI-তে অদৃশ্য,
+// শুধু API দিয়ে পড়া যায়) — future multi-family backup সাপোর্টের জন্য এই
+// একই মেকানিজম দিয়ে familyCode-ভিত্তিক আলাদা ফাইল খোঁজা সহজে যোগ করা যাবে।
+async function uploadDriveBackup(payload, existingFileId) {
+  const appProperties = {
+    app: "daily-task",
+    familyCode: payload.family.familyCode,
+    schemaVersion: String(payload.schemaVersion)
+  };
+  const metadata = existingFileId ? { appProperties } : {
+    name: DRIVE_BACKUP_FILE_NAME,
+    mimeType: "application/json",
+    appProperties
+  };
+  const boundary = "dailytask_" + Math.random().toString(36).slice(2);
+  const body = `--${boundary}\r\n` + `Content-Type: application/json; charset=UTF-8\r\n\r\n` + `${JSON.stringify(metadata)}\r\n` + `--${boundary}\r\n` + `Content-Type: application/json\r\n\r\n` + `${JSON.stringify(payload)}\r\n` + `--${boundary}--`;
+  const url = existingFileId ? `${DRIVE_UPLOAD_BASE}/files/${existingFileId}?uploadType=multipart&fields=id,appProperties,modifiedTime` : `${DRIVE_UPLOAD_BASE}/files?uploadType=multipart&fields=id,appProperties,modifiedTime`;
+  const res = await driveFetch(url, {
+    method: existingFileId ? "PATCH" : "POST",
+    headers: {
+      "Content-Type": `multipart/related; boundary=${boundary}`
+    },
+    body
+  });
+  const json = await res.json();
+  try {
+    localStorage.setItem(`drive_backup_file_id:${payload.family.familyCode}`, json.id);
+  } catch {}
+  return json;
+}
+async function downloadDriveBackupContent(fileId) {
+  const res = await driveFetch(`${DRIVE_API_BASE}/files/${fileId}?alt=media`);
+  return res.json();
+}
+// ফ্যামিলি কোড ভিন্ন হলে নীরবে ওভাররাইট না করে ব্যবহারকারীকে জিজ্ঞাসা করে,
+// তারপর Firestore থেকে বর্তমান স্ন্যাপশট নিয়ে Drive-এ আপলোড করে।
+async function backupToGoogleDrive() {
+  const existing = await findDriveBackupFile();
+  const currentFamilyCode = getFamilyCode();
+  if (existing && existing.appProperties && existing.appProperties.familyCode && existing.appProperties.familyCode !== currentFamilyCode) {
+    const proceed = window.confirm(`এই Google অ্যাকাউন্টে ইতিমধ্যে অন্য একটি ফ্যামিলি কোডের (${existing.appProperties.familyCode}) ব্যাকআপ সংরক্ষিত আছে। এগিয়ে গেলে সেটি এই ফ্যামিলির (${currentFamilyCode}) ডাটা দিয়ে প্রতিস্থাপিত হয়ে যাবে এবং আগের ফ্যামিলির ব্যাকআপ আর পাওয়া যাবে না। আপনি কি নিশ্চিতভাবে এগিয়ে যেতে চান?`);
+    if (!proceed) return { skipped: true };
+  }
+  const payload = await buildDriveBackupPayload();
+  await uploadDriveBackup(payload, existing ? existing.id : null);
+  return { success: true };
+}
+// --- Shared merge logic (local-file Import ও Drive Restore উভয়ই ব্যবহার করে) ---
+// নিয়ম:
+//   • member: — এখন entry/weekly-এর মতোই updatedAt-ভিত্তিক conflict
+//     resolution হয় (compareUpdatedAt=true হলে): নতুনটি রাখা হয়, তবে লাইভ
+//     দায়িত্ব/ownerUid কখনো ব্যাকআপ দিয়ে ওভাররাইট হয় না — শুধু নাম/জেন্ডার
+//     ইত্যাদি বাকি ফিল্ড আপডেট হয়। মিসিং updatedAt (এই ফিচারের আগে তৈরি
+//     পুরনো সদস্য ডকুমেন্ট) 0 ধরা হয় — backward-compatible fallback।
+//     compareUpdatedAt=false (local-file Import)-এ আগের আচরণ অপরিবর্তিত:
+//     সদস্য আগে থেকে থাকলে কখনো ছোঁয়া হয় না। শুধু একেবারে নতুন সদস্য
+//     থাকলে তা তৈরি হয়।
+//   • entry:/weekly:/অন্যান্য — compareUpdatedAt সত্য হলে updatedAt দেখে
+//     নতুনটি রাখা হয়; মিথ্যা হলে (বর্তমান লোকাল-ফাইল Import) আগের আচরণ
+//     অপরিবর্তিত থাকে (backup সবসময় লেখা হয়)।
+//   • Firestore-এ থাকা কোনো কিছু কখনো ডিলিট করা হয় না — শুধু backup-এর
+//     key-গুলোর ওপর দিয়ে লুপ চলে, Firestore-only key স্পর্শ করা হয় না।
+//   • অন্য ডিভাইসের claim করা সদস্যের entry/weekly/নিজের member: ডকুমেন্ট
+//     স্কিপ করা হয় (আগের মতোই)।
+async function mergeBackupData(parsed, options) {
+  const compareUpdatedAt = !!(options && options.compareUpdatedAt);
+  const colRef = db.collection(getCollectionName());
+  const myUid = auth.currentUser ? auth.currentUser.uid : null;
+  const currentMembers = await loadMembersV2();
+  const ownerByMemberId = {};
+  currentMembers.forEach(m => {
+    ownerByMemberId[m.id] = m.ownerUid ?? null;
+  });
+  function isMineOrUnclaimed(uid) {
+    return !uid || uid === myUid;
+  }
+  let existingDocsByKey = {};
+  if (compareUpdatedAt) {
+    const snap = await colRef.get();
+    snap.docs.forEach(d => {
+      existingDocsByKey[d.id] = d.data();
+    });
+  }
+  const keys = Object.keys(parsed);
+  const memberKeys = [];
+  const otherKeys = [];
+  const skippedKeys = [];
+  let skippedOlder = 0;
+  keys.forEach(key => {
+    const parts = key.split(":");
+    const isMemberScoped = parts[0] === "entry" || parts[0] === "weekly" || parts[0] === "member";
+    const memberId = isMemberScoped ? parts[1] : null;
+    if (memberId !== null && Object.prototype.hasOwnProperty.call(ownerByMemberId, memberId) && !isMineOrUnclaimed(ownerByMemberId[memberId])) {
+      skippedKeys.push(key);
+      return;
+    }
+    if (parts[0] === "member") {
+      // compareUpdatedAt=false (local-file Import) — আগের আচরণ অপরিবর্তিত:
+      // সদস্য আগে থেকে থাকলে কখনো ছোঁয়া হয় না।
+      const alreadyExists = compareUpdatedAt ? !!existingDocsByKey[key] : ownerByMemberId.hasOwnProperty(memberId);
+      if (!compareUpdatedAt && alreadyExists) {
+        return;
+      }
+      if (compareUpdatedAt && alreadyExists) {
+        // entry/weekly-এর মতোই updatedAt-ভিত্তিক conflict resolution —
+        // মিসিং updatedAt-কে 0 ধরা হয় (এই ফিচারের আগে তৈরি হওয়া পুরনো
+        // সদস্য ডকুমেন্টের জন্য backward-compatible fallback)।
+        const incomingUpdatedAt = parsed[key]?.updatedAt || 0;
+        const existingUpdatedAt = existingDocsByKey[key]?.updatedAt || 0;
+        if (existingUpdatedAt >= incomingUpdatedAt) {
+          skippedOlder += 1;
+          return; // বিদ্যমান Firestore ভার্সনই বহাল থাকবে
+        }
+        // backup নতুন — নাম/জেন্ডার ইত্যাদি ফিল্ড আপডেট হবে, কিন্তু বর্তমান
+        // (লাইভ) দায়িত্ব/ownerUid কখনো ব্যাকআপ দিয়ে ওভাররাইট হয় না। claim/
+        // release স্বাধীনভাবে ঘটে থাকে — একটি পুরনো ব্যাকআপ সেই লাইভ
+        // দায়িত্ব-অবস্থাকে "টাইম-ট্রাভেল" করে বদলে দিতে পারবে না।
+        memberKeys.push({
+          key,
+          data: { ...parsed[key], ownerUid: existingDocsByKey[key].ownerUid ?? null }
+        });
+        return;
+      }
+      // একেবারে নতুন সদস্য — brand-new create
+      const backupOwner = parsed[key].ownerUid ?? null;
+      const normalizedOwner = backupOwner === myUid ? myUid : null;
+      memberKeys.push({
+        key,
+        data: { ...parsed[key], ownerUid: normalizedOwner }
+      });
+      return;
+    }
+    if (compareUpdatedAt && existingDocsByKey[key]) {
+      const incomingUpdatedAt = parsed[key]?.updatedAt || 0;
+      const existingUpdatedAt = existingDocsByKey[key]?.updatedAt || 0;
+      if (existingUpdatedAt >= incomingUpdatedAt) {
+        skippedOlder += 1;
+        return;
+      }
+    }
+    otherKeys.push({ key, data: parsed[key] });
+  });
+  const CHUNK_SIZE = 450;
+  async function commitInChunks(items) {
+    for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+      const batch = db.batch();
+      items.slice(i, i + CHUNK_SIZE).forEach(({ key, data }) => {
+        batch.set(colRef.doc(key), data, { merge: true });
+      });
+      await batch.commit();
+    }
+  }
+  await commitInChunks(memberKeys);
+  await commitInChunks(otherKeys);
+  return {
+    skippedKeys,
+    skippedOlder,
+    createdMembers: memberKeys.length,
+    mergedOthers: otherKeys.length
+  };
+}
+// Google Drive থেকে ডাউনলোড করা ব্যাকআপ যাচাই করে, প্রয়োজনে এই ডিভাইসের
+// family_code ব্যাকআপের সাথে মিলিয়ে সুইচ করে (নতুন ডিভাইসে "আগের অবস্থায়
+// ফেরা"-র মূল অংশ), তারপর Firestore-এ merge করে।
+async function restoreFromGoogleDrive(fileId) {
+  const backup = await downloadDriveBackupContent(fileId);
+  if (!backup || typeof backup !== "object" || !backup.data || !backup.family || !backup.family.familyCode) {
+    throw new Error("ব্যাকআপ ফাইলের ফরম্যাট চেনা যাচ্ছে না।");
+  }
+  const backupFamilyCode = backup.family.familyCode;
+  if (backupFamilyCode !== getFamilyCode()) {
+    localStorage.setItem("family_code", backupFamilyCode);
+    if (backup.family.isCustomCode) {
+      localStorage.setItem("family_code_is_custom", "1");
+    } else {
+      localStorage.removeItem("family_code_is_custom");
+    }
+  }
+  if (backup.preferences && backup.preferences.themeColor) {
+    try {
+      localStorage.setItem("theme_color", backup.preferences.themeColor);
+    } catch {}
+  }
+  const result = await mergeBackupData(backup.data, { compareUpdatedAt: true });
+  return { ...result, familyCode: backupFamilyCode };
+}
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").then(reg => {
@@ -1414,12 +1756,20 @@ async function loadMembersV2() {
     return [];
   }
 }
+// entry:/weekly: ডকুমেন্টের মতোই member: ডকুমেন্টেও প্রতিটি লেখায় updatedAt
+// (Date.now()) স্ট্যাম্প করা হয় — এটাই Drive Restore-এর mergeBackupData()-কে
+// entry/weekly-এর মতো updatedAt-ভিত্তিক conflict resolution করতে দেয়।
+// পুরনো (এই পরিবর্তনের আগে তৈরি) সদস্য ডকুমেন্টে updatedAt না-ও থাকতে
+// পারে — mergeBackupData() সেটাকে 0 ধরে নিরাপদ fallback আচরণ করে।
 async function saveMemberDoc(member) {
   const {
     id,
     ...fields
   } = member;
-  await db.collection(getCollectionName()).doc(memberDocId(id)).set(fields, {
+  await db.collection(getCollectionName()).doc(memberDocId(id)).set({
+    ...fields,
+    updatedAt: Date.now()
+  }, {
     merge: true
   });
 }
@@ -1428,12 +1778,14 @@ async function deleteMemberDoc(id) {
 }
 async function claimMemberDoc(id, uid) {
   await db.collection(getCollectionName()).doc(memberDocId(id)).update({
-    ownerUid: uid
+    ownerUid: uid,
+    updatedAt: Date.now()
   });
 }
 async function releaseMemberDoc(id) {
   await db.collection(getCollectionName()).doc(memberDocId(id)).update({
-    ownerUid: null
+    ownerUid: null,
+    updatedAt: Date.now()
   });
 }
 // One-time migration: if no v2 (member:*) docs exist yet but a legacy v1
@@ -1770,6 +2122,13 @@ function App() {
   const [showFamilyCodeModal, setShowFamilyCodeModal] = useState(false);
   const [showGoogleAccountModal, setShowGoogleAccountModal] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [showBackupOptionsModal, setShowBackupOptionsModal] = useState(false);
+  const [driveBackupBusy, setDriveBackupBusy] = useState(false);
+  const [driveBackupStatus, setDriveBackupStatus] = useState(null); // {type: "ok"|"error", text}
+  const [showDriveRestoreModal, setShowDriveRestoreModal] = useState(false);
+  const [driveRestoreCandidate, setDriveRestoreCandidate] = useState(null); // Drive file metadata
+  const [driveRestoreBusy, setDriveRestoreBusy] = useState(false);
+  const [driveRestoreChecking, setDriveRestoreChecking] = useState(false);
   const [showDeleteAccountWarning, setShowDeleteAccountWarning] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [archiveYear, setArchiveYear] = useState(() => new Date().getFullYear());
@@ -2010,6 +2369,65 @@ function App() {
       downloadAnchor.remove();
     } catch (err) {
       alert("ডাটা এক্সপোর্ট করতে সমস্যা হয়েছে: " + err.message);
+    }
+  }
+  // --- Google Drive Backup/Restore UI handlers ---
+  async function handleDriveBackupClick() {
+    if (!isGoogleLinked()) {
+      setShowBackupOptionsModal(false);
+      setShowGoogleAccountModal(true);
+      return;
+    }
+    setDriveBackupBusy(true);
+    setDriveBackupStatus(null);
+    try {
+      const result = await backupToGoogleDrive();
+      if (result.skipped) {
+        setDriveBackupStatus({ type: "error", text: "ব্যাকআপ বাতিল করা হয়েছে।" });
+      } else {
+        setDriveBackupStatus({ type: "ok", text: "Google Drive-এ ব্যাকআপ সংরক্ষিত হয়েছে।" });
+      }
+    } catch (err) {
+      setDriveBackupStatus({ type: "error", text: "Google Drive ব্যাকআপ ব্যর্থ হয়েছে: " + err.message });
+    } finally {
+      setDriveBackupBusy(false);
+    }
+  }
+  async function handleBothBackupClick() {
+    await handleExportData();
+    await handleDriveBackupClick();
+  }
+  // Google সাইন-ইন (link) সফল হওয়ার পর কল হয় — এই অ্যাকাউন্টে আগে থেকে
+  // কোনো Drive ব্যাকআপ থাকলে সেটা detect করে Restore-এর Popup দেখানো হয়।
+  async function checkDriveBackupAfterLink() {
+    if (!isGoogleDriveConfigured()) return;
+    setDriveRestoreChecking(true);
+    try {
+      const file = await findDriveBackupFile();
+      if (file) {
+        setDriveRestoreCandidate(file);
+        setShowDriveRestoreModal(true);
+      }
+    } catch {
+      // নীরবে ব্যর্থ হতে দেওয়া হচ্ছে — এটি একটি ঐচ্ছিক সুবিধা, সাইন-ইন
+      // প্রক্রিয়া আটকে রাখা উচিত নয়। ব্যবহারকারী চাইলে মেনু থেকে ম্যানুয়ালি
+      // ব্যাকআপ/রিস্টোর করতে পারবেন।
+    } finally {
+      setDriveRestoreChecking(false);
+    }
+  }
+  async function handleConfirmDriveRestore() {
+    if (!driveRestoreCandidate) return;
+    setDriveRestoreBusy(true);
+    try {
+      await restoreFromGoogleDrive(driveRestoreCandidate.id);
+      window.alert("Google Drive থেকে ডাটা সফলভাবে রিস্টোর (মার্জ) করা হয়েছে।");
+      window.location.reload();
+    } catch (err) {
+      alert("রিস্টোর করতে সমস্যা হয়েছে: " + err.message);
+    } finally {
+      setDriveRestoreBusy(false);
+      setShowDriveRestoreModal(false);
     }
   }
   async function handleImportData(e) {
@@ -2279,7 +2697,8 @@ function App() {
       name,
       gender: newGender,
       ownerUid: auth.currentUser ? auth.currentUser.uid : null,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     };
     const next = [...(members || []), newMember];
     setMembers(next);
@@ -2973,13 +3392,14 @@ function App() {
     className: "text-[10px] text-emerald-600 font-bold"
   }, "কপি হয়েছে!")), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
-      handleExportData();
+      setDriveBackupStatus(null);
+      setShowBackupOptionsModal(true);
       setIsMenuOpen(false);
     },
     className: "w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
   }, /*#__PURE__*/React.createElement(DownloadIcon, {
     size: 14
-  }), " ব্যাকআপ ফাইল ডাউনলোড"), /*#__PURE__*/React.createElement("label", {
+  }), " ডাটা ব্যাকআপ রাখুন"), /*#__PURE__*/React.createElement("label", {
     className: "w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700 cursor-pointer"
   }, /*#__PURE__*/React.createElement(UploadIcon, {
     size: 14
@@ -3651,8 +4071,84 @@ function App() {
     onClick: () => setShowFamilyCodeModal(false),
     className: "flex-1 h-9 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold"
   }, "বাতিল")))), showGoogleAccountModal && /*#__PURE__*/React.createElement(GoogleAccountModal, {
-    onClose: () => setShowGoogleAccountModal(false)
-  }), showDeleteAccountWarning && /*#__PURE__*/React.createElement("div", {
+    onClose: () => setShowGoogleAccountModal(false),
+    onLinked: checkDriveBackupAfterLink
+  }), showBackupOptionsModal && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-800 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(DownloadIcon, {
+    size: 16,
+    color: "var(--theme-primary)"
+  }), " ডাটা ব্যাকআপ রাখুন"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowBackupOptionsModal(false)
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 18,
+    className: "text-slate-400"
+  }))), /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-slate-500 mb-3"
+  }, "কোথায় ব্যাকআপ রাখতে চান তা বেছে নিন।"), driveBackupStatus && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mb-3 " + (driveBackupStatus.type === "ok" ? "text-emerald-700" : "text-red-600")
+  }, driveBackupStatus.text), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: handleDriveBackupClick,
+    disabled: driveBackupBusy,
+    className: "w-full h-11 rounded-xl text-left px-3 bg-emerald-800 text-white text-xs font-bold flex items-center gap-2 disabled:opacity-60"
+  }, driveBackupBusy ? /*#__PURE__*/React.createElement(Loader2, {
+    className: "animate-spin",
+    size: 14
+  }) : /*#__PURE__*/React.createElement(UploadIcon, {
+    size: 14
+  }), isGoogleLinked() ? "Google Drive-এ ব্যাকআপ রাখুন" : "Google Drive-এ ব্যাকআপ রাখুন (আগে সাইন ইন করতে হবে)"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      handleExportData();
+      setShowBackupOptionsModal(false);
+    },
+    className: "w-full h-11 rounded-xl text-left px-3 border border-slate-200 text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50"
+  }, /*#__PURE__*/React.createElement(DownloadIcon, {
+    size: 14
+  }), "আপনার ডিভাইসে ব্যাকআপ রাখুন"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleBothBackupClick,
+    disabled: driveBackupBusy,
+    className: "w-full h-11 rounded-xl text-left px-3 border border-emerald-200 bg-emerald-50 text-emerald-900 text-xs font-bold flex items-center gap-2 disabled:opacity-60"
+  }, /*#__PURE__*/React.createElement(UploadIcon, {
+    size: 14
+  }), "Google Drive ও আপনার ডিভাইস — উভয় জায়গায় ব্যাকআপ রাখুন")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowBackupOptionsModal(false),
+    className: "w-full h-9 mt-4 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
+  }, "বন্ধ করুন"))), showDriveRestoreModal && driveRestoreCandidate && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 mb-3"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-2xl"
+  }, "☁️"), /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-sm text-slate-800"
+  }, "Google Drive-এ ব্যাকআপ পাওয়া গেছে")), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-2"
+  }, "ফ্যামিলি কোড: ", /*#__PURE__*/React.createElement("b", null, (driveRestoreCandidate.appProperties && driveRestoreCandidate.appProperties.familyCode) || "অজানা"), driveRestoreCandidate.modifiedTime ? " · সর্বশেষ পরিবর্তন: " + new Date(driveRestoreCandidate.modifiedTime).toLocaleString("bn-BD") : ""), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-600 leading-relaxed mb-4"
+  }, "এই ব্যাকআপ থেকে ডাটা রিস্টোর (মার্জ) করবেন? বর্তমান ডিভাইসের ডাটার সাথে merge হবে — কোনো ডাটা হারাবে না; দুই জায়গায় একই এন্ট্রি থাকলে যেটি বেশি সাম্প্রতিক (updatedAt) সেটি রাখা হবে।"), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowDriveRestoreModal(false),
+    disabled: driveRestoreBusy,
+    className: "flex-1 h-9 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold disabled:opacity-50"
+  }, "এখন না"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleConfirmDriveRestore,
+    disabled: driveRestoreBusy,
+    className: "flex-1 h-9 bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+  }, driveRestoreBusy ? /*#__PURE__*/React.createElement(Loader2, {
+    className: "animate-spin",
+    size: 14
+  }) : null, "রিস্টোর করুন")))), showDeleteAccountWarning && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center px-5 z-50"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl border border-slate-100"
@@ -4054,7 +4550,8 @@ function signOutToFreshAnonymous() {
   return auth.signOut().then(() => auth.signInAnonymously());
 }
 function GoogleAccountModal({
-  onClose
+  onClose,
+  onLinked
 }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -4064,6 +4561,9 @@ function GoogleAccountModal({
     try {
       await linkGoogleAccount();
       onClose();
+      // সাইন-ইন সফল — এই Google অ্যাকাউন্টে আগে থেকে কোনো Drive ব্যাকআপ
+      // থাকলে detect করে Restore-এর Popup দেখানোর সুযোগ App-কে দেওয়া হচ্ছে।
+      if (onLinked) onLinked();
     } catch (err) {
       if (err && err.code === "auth/popup-closed-by-user") {
         // ব্যবহারকারী নিজেই পপআপ বন্ধ করেছেন — কোনো বার্তা দরকার নেই
