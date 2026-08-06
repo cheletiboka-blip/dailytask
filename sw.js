@@ -70,7 +70,16 @@ self.addEventListener("fetch", (e) => {
           // respondWith() always receives a valid Response.
           if (cached) return cached;
           if (e.request.mode === "navigate") {
-            return caches.match("./index.html");
+            // C-4 fix: right after a site-data/cache clear, the very first
+            // navigation can race ahead of the install event's precaching
+            // (see ASSETS above) — at that moment caches.match("./index.html")
+            // ALSO resolves to undefined (nothing cached yet). Returning
+            // that undefined straight to respondWith() is the exact same
+            // ERR_FAILED problem this fix block exists to prevent, just one
+            // level deeper. Guard it the same way: fall back to an explicit
+            // Response so respondWith() never receives undefined, no matter
+            // how empty the cache is at this moment.
+            return caches.match("./index.html").then((r) => r || new Response("", { status: 503, statusText: "Offline" }));
           }
           return new Response("", { status: 503, statusText: "Offline" });
         });
