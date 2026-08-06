@@ -4881,12 +4881,18 @@ function GoogleAccountModal({
     } catch (err) {
       if (err && err.code === "auth/popup-closed-by-user") {
         // ব্যবহারকারী নিজেই পপআপ বন্ধ করেছেন — কোনো বার্তা দরকার নেই
-      } else if (err && err.code === "auth/credential-already-in-use") {
+      } else if (err && err.credential && (err.code === "auth/credential-already-in-use" || err.code === "auth/email-already-in-use")) {
         // এই Google অ্যাকাউন্ট আগে থেকেই অন্য একটি (সম্ভবত আগের সাইন-আউট
         // হওয়া) সেশনের সাথে লিংক করা আছে — নতুন anonymous সেশনে আবার লিংক
         // করা যাবে না। এক্ষেত্রে লিংক না করে সরাসরি সেই পুরনো Google-লিংকড
         // অ্যাকাউন্টেই সাইন ইন করাই সঠিক "রিকভারি" পদ্ধতি — err.credential-এ
         // Firebase নিজেই সেই ক্রেডেনশিয়াল দিয়ে দেয়।
+        // এই দুই error code (credential-already-in-use ও email-already-in-use)
+        // উভয় ক্ষেত্রেই Firebase docs অনুযায়ী err.credential প্রদান করা হয়,
+        // এবং এই অ্যাপে single email-bearing provider (google.com) থাকায়
+        // দুটোই কার্যত একই পরিস্থিতি বোঝায়। account-exists-with-different-
+        // credential ইচ্ছাকৃতভাবে এখানে অন্তর্ভুক্ত করা হয়নি — সেটির জন্য
+        // Firebase-এর recommended flow ভিন্ন (fetchSignInMethodsForEmail)।
         try {
           await auth.signInWithCredential(err.credential);
           // এই path-এ window.location.reload()-এর কারণে onLinked() কল করার
