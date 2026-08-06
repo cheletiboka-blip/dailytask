@@ -4907,6 +4907,21 @@ function GoogleAccountModal({
             text: "সাইন ইন করতে সমস্যা হয়েছে: " + (signInErr && (signInErr.message || signInErr.code))
           });
         }
+      } else if (err && err.code === "auth/email-already-in-use") {
+        // এই ত্রুটির অফিসিয়াল রিকভারি (fetchSignInMethodsForEmail → সেই
+        // provider দিয়ে সাইন-ইন → linkWithCredential) এখানে সম্ভব নয়,
+        // কারণ যে অ্যাকাউন্টের সাথে email-টি সংযুক্ত সেটি আগে থেকেই
+        // google.com provider unlink করা (সাইন-আউট/ডিলিট করা হয়েছিল) —
+        // তাই সেই email-এ বর্তমানে সাইন-ইন করার মতো কোনো provider অবশিষ্ট
+        // নেই। credential-already-in-use-এর মতো সরাসরি signInWithCredential()
+        // এখানে নিরাপদ নয় (এটি sign-in অপারেশন, নতুন/অপ্রত্যাশিত অ্যাকাউন্ট
+        // তৈরি করে দিতে পারে বা account-exists-with-different-credential
+        // এররে রূপান্তরিত হতে পারে) — তাই এখানে কোনো auto-recovery চেষ্টা না
+        // করে শুধু স্পষ্ট বার্তা দেখানো হচ্ছে।
+        setNotice({
+          type: "error",
+          text: "এই Google অ্যাকাউন্টের ইমেইল ইতিমধ্যে অন্য একটি (সম্ভবত আগে সাইন-আউট করা) সেশনের সাথে সংযুক্ত আছে। এই মুহূর্তে স্বয়ংক্রিয়ভাবে রিকভার করা সম্ভব হচ্ছে না — অনুগ্রহ করে সহায়তার জন্য আমাদের জানান (মেনু → আমাদের জানান)।"
+        });
       } else {
         setNotice({
           type: "error",
