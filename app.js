@@ -96,6 +96,59 @@ function setFamilyCode(code) {
   localStorage.setItem("family_code_is_custom", "1");
   window.location.reload();
 }
+// --- users/{uid} <-> familyCode mapping (Google-account-based recovery) ---
+// ছোট, ঐচ্ছিক কালেকশন — Google-linked uid-কে familyCode-এর সাথে যুক্ত রাখে
+// যাতে নতুন ডিভাইসে বা cache-clear-এর পরও শুধু Google sign-in করলেই সঠিক
+// family code (এবং তাই সব সদস্য/রেকর্ড) স্বয়ংক্রিয়ভাবে ফিরে আসে। Family
+// code দিয়ে সরাসরি sync করার existing flow অপরিবর্তিত থাকছে — এটি শুধু
+// একটি অতিরিক্ত, বিকল্প recovery-পথ, কোনো breaking change নয়।
+async function loadUserFamilyCode(uid) {
+  try {
+    const doc = await db.collection("users").doc(uid).get();
+    return doc.exists ? doc.data().familyCode || null : null;
+  } catch {
+    return null;
+  }
+}
+async function saveUserFamilyCode(uid, code) {
+  // ফাংশনের নিজের ভেতরেই guard — caller ভুলে খালি/অবৈধ code পাঠালেও
+  // users/{uid}-এ কখনো ফাঁকা familyCode লেখা হবে না।
+  if (!uid || !code || !code.trim()) return;
+  try {
+    await db.collection("users").doc(uid).set({
+      familyCode: code.trim(),
+      updatedAt: Date.now()
+    }, {
+      merge: true
+    });
+  } catch {}
+}
+// Google দিয়ে sign-in করা থাকলে কল হয়। users/{uid}-এ আগে থেকে সংরক্ষিত
+// familyCode থাকলে (অন্য ডিভাইস থেকে link করা) সেটাই এই ডিভাইসে local-এ
+// বসিয়ে দেওয়া হয় (account অনুসরণ করে family/profile/records লোড হয়)।
+// না থাকলে, এই ডিভাইসের বর্তমান বৈধ (non-empty) local familyCode
+// account-এর সাথে save করে রাখা হয় যাতে ভবিষ্যতে অন্য ডিভাইসেও কাজে লাগে।
+async function syncFamilyCodeWithAccount() {
+  if (!auth.currentUser || !isGoogleLinked()) return {
+    switched: false
+  };
+  const uid = auth.currentUser.uid;
+  const remoteCode = await loadUserFamilyCode(uid);
+  const localCode = getFamilyCode();
+  if (remoteCode && remoteCode !== localCode) {
+    localStorage.setItem("family_code", remoteCode);
+    localStorage.setItem("family_code_is_custom", "1");
+    return {
+      switched: true
+    };
+  }
+  if (!remoteCode && localCode && localCode.trim()) {
+    await saveUserFamilyCode(uid, localCode);
+  }
+  return {
+    switched: false
+  };
+}
 const getCollectionName = () => `data_${getFamilyCode()}`;
 const appStorage = {
   async get(key, shared) {
@@ -207,6 +260,10 @@ const DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3";
 let driveTokenClient = null;
 let driveAccessToken = null;
 let driveTokenExpiresAt = 0;
+// H-4 fix: shared in-flight promise so concurrent getDriveAccessToken()
+// callers await the same token request instead of each reassigning the
+// GIS token client's single shared callback (see getDriveAccessToken()).
+let driveTokenRequestInFlight = null;
 
 function isGoogleDriveConfigured() {
   return typeof google !== "undefined" && !!(google.accounts && google.accounts.oauth2) && !GOOGLE_DRIVE_CLIENT_ID.startsWith("YOUR_");
@@ -249,10 +306,27 @@ async function getDriveAccessToken() {
     throw new Error("Google Drive ব্যাকআপ এখনো সেটআপ করা হয়নি।");
   }
   if (driveAccessToken && Date.now() < driveTokenExpiresAt - 60000) return driveAccessToken;
+  // H-4 fix: ensureDriveTokenClient()-এর client.callback/error_callback
+  // module-level shared object-এর ওপর সেট হয় — requestDriveAccessToken()
+  // প্রতিবার সেটা reassign করে। দুটি জায়গা থেকে (যেমন বুট-টাইম silent
+  // Drive-restore চেক ও ম্যানুয়াল ব্যাকআপ ক্লিক) প্রায় একই সময়ে
+  // getDriveAccessToken() ডাকা হলে দ্বিতীয় কলের callback assignment প্রথম
+  // কলেরটাকে overwrite করে ফেলতে পারে, ফলে প্রথম কলের Promise কখনো
+  // resolve/reject না হয়ে ঝুলে থাকতে পারে। এই in-flight promise cache
+  // নিশ্চিত করে concurrent কলগুলো নতুন করে requestAccessToken() না ডেকে
+  // একই চলমান promise-এ await করবে।
+  if (driveTokenRequestInFlight) return driveTokenRequestInFlight;
+  driveTokenRequestInFlight = (async () => {
+    try {
+      return await requestDriveAccessToken("");
+    } catch {
+      return await requestDriveAccessToken("consent");
+    }
+  })();
   try {
-    return await requestDriveAccessToken("");
-  } catch {
-    return await requestDriveAccessToken("consent");
+    return await driveTokenRequestInFlight;
+  } finally {
+    driveTokenRequestInFlight = null;
   }
 }
 async function driveFetch(url, options, _retriedAfter401) {
@@ -1960,10 +2034,27 @@ async function saveMemberDoc(member) {
 async function deleteMemberDoc(id) {
   await db.collection(getCollectionName()).doc(memberDocId(id)).delete();
 }
+// H-2 fix: previously a plain update() with no read-check, so two devices
+// claiming the same unclaimed member at nearly the same time could race —
+// whichever write landed last would silently win, with no indication to
+// the earlier device that its claim had been overwritten. Wrapping this in
+// a transaction makes the check-then-write atomic: we read the member's
+// CURRENT ownerUid inside the transaction and only proceed if it's still
+// unowned (or already owned by this same uid); otherwise we throw so the
+// caller's existing catch/alert can inform the user, instead of silently
+// overwriting another device's claim.
 async function claimMemberDoc(id, uid) {
-  await db.collection(getCollectionName()).doc(memberDocId(id)).update({
-    ownerUid: uid,
-    updatedAt: Date.now()
+  const docRef = db.collection(getCollectionName()).doc(memberDocId(id));
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(docRef);
+    const currentOwner = snap.exists ? snap.data().ownerUid ?? null : null;
+    if (currentOwner && currentOwner !== uid) {
+      throw new Error("এই সদস্যের দায়িত্ব ইতিমধ্যে অন্য একটি ডিভাইস নিয়ে নিয়েছে। পেজ রিফ্রেশ করে আবার চেষ্টা করুন।");
+    }
+    tx.update(docRef, {
+      ownerUid: uid,
+      updatedAt: Date.now()
+    });
   });
 }
 async function releaseMemberDoc(id) {
@@ -2204,6 +2295,7 @@ function ProgressChart({
     });
     if (chartInstance.current) {
       chartInstance.current.destroy();
+      chartInstance.current = null;
     }
     const ctx = chartRef.current.getContext("2d");
     const themePrimary = getThemeColor("#0E4B43");
@@ -2252,7 +2344,10 @@ function ProgressChart({
       }
     });
     return () => {
-      if (chartInstance.current) chartInstance.current.destroy();
+      if (chartInstance.current) {
+        chartInstance.current.destroy();
+        chartInstance.current = null;
+      }
     };
   }, [monthEntries, totalDays, member, allFields]);
   return /*#__PURE__*/React.createElement("div", {
@@ -2304,6 +2399,11 @@ function App() {
   // true, the live onSnapshot listener below skips applying incoming data,
   // so another device's save can't silently overwrite in-progress typing.
   const meetingDirtyRef = useRef(false);
+  // H-3 fix: track unsaved edits in the day entry and weekly reflection so
+  // navigating away (date/month/member change) can warn before silently
+  // discarding them — mirrors the existing meetingDirtyRef pattern.
+  const entryDirtyRef = useRef(false);
+  const weeklyDirtyRef = useRef(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -2354,6 +2454,7 @@ function App() {
     const deltaX = e.changedTouches[0].clientX - touchStartXRef.current;
     touchStartXRef.current = null;
     if (Math.abs(deltaX) < 40) return; // ignore small taps/scrolls
+    if (entryDirtyRef.current && !window.confirm("এই দিনের এন্ট্রিতে সেভ না করা পরিবর্তন আছে। এগিয়ে গেলে তা হারিয়ে যাবে। আপনি কি নিশ্চিত?")) return;
     setViewDate(d => {
       const n = new Date(d);
       n.setDate(n.getDate() + (deltaX < 0 ? 1 : -1));
@@ -2362,6 +2463,11 @@ function App() {
   }
   useEffect(() => {
     (async () => {
+      // Google sign-in বা family code — যেটাই আগে পাওয়া যায়, সেই অনুযায়ী
+      // একই family/profile/records auto-load হওয়া নিশ্চিত করতে, member
+      // লোড করার আগেই (Google-linked থাকলে) account-এর সংরক্ষিত family
+      // code দিয়ে local code sync করে নেওয়া হচ্ছে।
+      await syncFamilyCodeWithAccount();
       const m = await migrateMembersIfNeeded();
       setMembers(m);
       // Fires once per app load (not per re-render) so the Analytics
@@ -2479,6 +2585,7 @@ function App() {
     loadEntry(selectedId, dateKey(viewDate)).then(data => {
       setEntry(data || {});
       originalEntryRef.current = data || null;
+      entryDirtyRef.current = false;
     });
   }, [selectedId, viewDate]);
 
@@ -2528,6 +2635,7 @@ function App() {
     if (!selectedId) return;
     loadWeekly(selectedId, monthCursor.year, monthCursor.month0).then(data => {
       setWeekly(data);
+      weeklyDirtyRef.current = false;
       const maxPossible = getWeekRanges(daysInMonth(monthCursor.year, monthCursor.month0)).length;
       let highestFilled = 1;
       for (let w = 1; w <= maxPossible; w++) {
@@ -2817,6 +2925,11 @@ function App() {
     setFamilyCode(code);
   }
   function handleGoToArchive() {
+    // আর্কাইভে যাওয়া একসাথে মাস ও তারিখ উভয়ই পরিবর্তন করে — তাই তিনটি
+    // dirty flag-ই একসাথে চেক করে একটিমাত্র (duplicate নয়) confirm দেখানো
+    // হচ্ছে।
+    const hasUnsaved = entryDirtyRef.current || weeklyDirtyRef.current || meetingDirtyRef.current;
+    if (hasUnsaved && !window.confirm("সেভ না করা পরিবর্তন আছে। আর্কাইভে গেলে তা হারিয়ে যাবে। আপনি কি নিশ্চিত?")) return;
     setMonthCursor({
       year: archiveYear,
       month0: archiveMonth0
@@ -2856,6 +2969,7 @@ function App() {
     }
   }
   function updateWeekly(weekIdx, field, value) {
+    weeklyDirtyRef.current = true;
     setWeekly(prev => ({
       ...prev,
       [weekIdx]: {
@@ -2914,6 +3028,7 @@ function App() {
     setSavingWeekly(true);
     try {
       await saveWeekly(selectedId, monthCursor.year, monthCursor.month0, weekly, selectedMember?.ownerUid ?? null);
+      weeklyDirtyRef.current = false;
       setWeeklySavedTick(true);
       setTimeout(() => setWeeklySavedTick(false), 1600);
     } catch (err) {
@@ -3072,6 +3187,7 @@ function App() {
   }
   function updateField(key, value) {
     if (isFutureDate(viewDate) || isLockedForThisDevice) return;
+    entryDirtyRef.current = true;
     setEntry(prev => ({
       ...prev,
       [key]: value
@@ -3079,6 +3195,7 @@ function App() {
   }
   function updateExcuse(key, value) {
     if (isFutureDate(viewDate) || isLockedForThisDevice) return;
+    entryDirtyRef.current = true;
     setEntry(prev => ({
       ...prev,
       excused: {
@@ -3106,6 +3223,7 @@ function App() {
       await saveEntry(selectedId, key, toSave, selectedMember?.ownerUid ?? null);
       originalEntryRef.current = toSave;
       setEntry(toSave);
+      entryDirtyRef.current = false;
       localStorage.setItem("last_active_date", dateKey(new Date()));
       setSavedTick(true);
       setTimeout(() => setSavedTick(false), 1600);
@@ -3558,6 +3676,7 @@ function App() {
   }, members.map(m => /*#__PURE__*/React.createElement("div", {
     key: m.id,
     onClick: () => {
+      if (m.id !== selectedId && (entryDirtyRef.current || weeklyDirtyRef.current) && !window.confirm("সেভ না করা পরিবর্তন আছে (দৈনিক এন্ট্রি/সাপ্তাহিক রিফ্লেকশন)। সদস্য পরিবর্তন করলে তা হারিয়ে যাবে। আপনি কি নিশ্চিত?")) return;
       setSelectedId(m.id);
       setIsMenuOpen(false);
     },
@@ -3584,13 +3703,12 @@ function App() {
     },
     className: "text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0",
     title: "আপনার দায়িত্বে আছে — ছেড়ে দিতে ট্যাপ করুন"
-  }, "আপনার") : /*#__PURE__*/React.createElement("button", {
+  }, "আপনার") : /*#__PURE__*/React.createElement("span", {
     onClick: e => {
       e.stopPropagation();
-      handleReleaseMember(m);
     },
-    className: "text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 shrink-0 flex items-center gap-0.5",
-    title: "অন্য ডিভাইসের দায়িত্বে আছে — ছেড়ে দিতে ট্যাপ করুন"
+    className: "text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 shrink-0 flex items-center gap-0.5 cursor-default",
+    title: "অন্য ডিভাইসের দায়িত্বে আছে — শুধুমাত্র সেই ডিভাইস থেকেই দায়িত্ব ছাড়া যাবে"
   }, /*#__PURE__*/React.createElement(InfoIcon, {
     size: 9
   }), " সংরক্ষিত"), /*#__PURE__*/React.createElement("button", {
@@ -3882,11 +4000,14 @@ function App() {
     onTouchEnd: handleDateTouchEnd,
     className: "bg-white rounded-2xl shadow-sm px-4 py-2.5 flex items-center justify-between border border-slate-200/80"
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => setViewDate(d => {
-      const n = new Date(d);
-      n.setDate(n.getDate() - 1);
-      return n;
-    }),
+    onClick: () => {
+      if (entryDirtyRef.current && !window.confirm("এই দিনের এন্ট্রিতে সেভ না করা পরিবর্তন আছে। এগিয়ে গেলে তা হারিয়ে যাবে। আপনি কি নিশ্চিত?")) return;
+      setViewDate(d => {
+        const n = new Date(d);
+        n.setDate(n.getDate() - 1);
+        return n;
+      });
+    },
     className: "w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-all text-slate-700"
   }, /*#__PURE__*/React.createElement(ChevronLeft, {
     size: 16
@@ -3912,11 +4033,14 @@ function App() {
       fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace"
     }
   }, toBn(getHijriDate(viewDate).year)), " হিজরি")), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setViewDate(d => {
-      const n = new Date(d);
-      n.setDate(n.getDate() + 1);
-      return n;
-    }),
+    onClick: () => {
+      if (entryDirtyRef.current && !window.confirm("এই দিনের এন্ট্রিতে সেভ না করা পরিবর্তন আছে। এগিয়ে গেলে তা হারিয়ে যাবে। আপনি কি নিশ্চিত?")) return;
+      setViewDate(d => {
+        const n = new Date(d);
+        n.setDate(n.getDate() + 1);
+        return n;
+      });
+    },
     className: "w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 transition-all text-slate-700"
   }, /*#__PURE__*/React.createElement(ChevronRight, {
     size: 16
@@ -4121,13 +4245,16 @@ function App() {
   })), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1.5 bg-white px-2 py-1 rounded-xl border border-slate-200 shadow-sm"
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => setMonthCursor(c => c.month0 === 0 ? {
-      year: c.year - 1,
-      month0: 11
-    } : {
-      year: c.year,
-      month0: c.month0 - 1
-    }),
+    onClick: () => {
+      if ((weeklyDirtyRef.current || meetingDirtyRef.current) && !window.confirm("সাপ্তাহিক রিফ্লেকশন বা মাসিক সভায় সেভ না করা পরিবর্তন আছে। মাস পরিবর্তন করলে তা হারিয়ে যাবে। আপনি কি নিশ্চিত?")) return;
+      setMonthCursor(c => c.month0 === 0 ? {
+        year: c.year - 1,
+        month0: 11
+      } : {
+        year: c.year,
+        month0: c.month0 - 1
+      });
+    },
     className: "w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100"
   }, /*#__PURE__*/React.createElement(ChevronLeft, {
     size: 14
@@ -4136,13 +4263,16 @@ function App() {
   }, BN_MONTHS[monthCursor.month0], " ", /*#__PURE__*/React.createElement("span", {
     style: { fontFamily: "'IBM Plex Mono', 'Hind Siliguri', monospace" }
   }, toBn(monthCursor.year))), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setMonthCursor(c => c.month0 === 11 ? {
-      year: c.year + 1,
-      month0: 0
-    } : {
-      year: c.year,
-      month0: c.month0 + 1
-    }),
+    onClick: () => {
+      if ((weeklyDirtyRef.current || meetingDirtyRef.current) && !window.confirm("সাপ্তাহিক রিফ্লেকশন বা মাসিক সভায় সেভ না করা পরিবর্তন আছে। মাস পরিবর্তন করলে তা হারিয়ে যাবে। আপনি কি নিশ্চিত?")) return;
+      setMonthCursor(c => c.month0 === 11 ? {
+        year: c.year + 1,
+        month0: 0
+      } : {
+        year: c.year,
+        month0: c.month0 + 1
+      });
+    },
     className: "w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100"
   }, /*#__PURE__*/React.createElement(ChevronRight, {
     size: 14
@@ -4189,7 +4319,10 @@ function App() {
     const cellDate = new Date(monthCursor.year, monthCursor.month0, d);
     return /*#__PURE__*/React.createElement("button", {
       key: d,
-      onClick: () => setViewDate(cellDate),
+      onClick: () => {
+        if (entryDirtyRef.current && !window.confirm("এই দিনের এন্ট্রিতে সেভ না করা পরিবর্তন আছে। এগিয়ে গেলে তা হারিয়ে যাবে। আপনি কি নিশ্চিত?")) return;
+        setViewDate(cellDate);
+      },
       className: "h-7 w-full rounded-lg flex items-center justify-center text-[10px] font-bold transition-transform active:scale-90 shadow-sm",
       style: {
         background: scoreColor(s),
@@ -4874,6 +5007,16 @@ function GoogleAccountModal({
     setNotice(null);
     try {
       await linkGoogleAccount();
+      // এই Google অ্যাকাউন্টে আগে থেকে সংরক্ষিত familyCode থাকলে (অন্য
+      // ডিভাইস থেকে link করা), সেটাই এখন এই ডিভাইসে load করা হচ্ছে —
+      // থাকলে reload করে পুরো family/profile/records নতুন code দিয়ে
+      // fresh state-এ আনা হয় (না থাকলে বর্তমান code-ই account-এ save
+      // হয়ে যায়, নিচের syncFamilyCodeWithAccount()-এর ভেতরেই)।
+      const sync = await syncFamilyCodeWithAccount();
+      if (sync.switched) {
+        window.location.reload();
+        return;
+      }
       onClose();
       // সাইন-ইন সফল — এই Google অ্যাকাউন্টে আগে থেকে কোনো Drive ব্যাকআপ
       // থাকলে detect করে Restore-এর Popup দেখানোর সুযোগ App-কে দেওয়া হচ্ছে।
@@ -4881,18 +5024,12 @@ function GoogleAccountModal({
     } catch (err) {
       if (err && err.code === "auth/popup-closed-by-user") {
         // ব্যবহারকারী নিজেই পপআপ বন্ধ করেছেন — কোনো বার্তা দরকার নেই
-      } else if (err && err.credential && (err.code === "auth/credential-already-in-use" || err.code === "auth/email-already-in-use")) {
+      } else if (err && err.code === "auth/credential-already-in-use") {
         // এই Google অ্যাকাউন্ট আগে থেকেই অন্য একটি (সম্ভবত আগের সাইন-আউট
         // হওয়া) সেশনের সাথে লিংক করা আছে — নতুন anonymous সেশনে আবার লিংক
         // করা যাবে না। এক্ষেত্রে লিংক না করে সরাসরি সেই পুরনো Google-লিংকড
         // অ্যাকাউন্টেই সাইন ইন করাই সঠিক "রিকভারি" পদ্ধতি — err.credential-এ
         // Firebase নিজেই সেই ক্রেডেনশিয়াল দিয়ে দেয়।
-        // এই দুই error code (credential-already-in-use ও email-already-in-use)
-        // উভয় ক্ষেত্রেই Firebase docs অনুযায়ী err.credential প্রদান করা হয়,
-        // এবং এই অ্যাপে single email-bearing provider (google.com) থাকায়
-        // দুটোই কার্যত একই পরিস্থিতি বোঝায়। account-exists-with-different-
-        // credential ইচ্ছাকৃতভাবে এখানে অন্তর্ভুক্ত করা হয়নি — সেটির জন্য
-        // Firebase-এর recommended flow ভিন্ন (fetchSignInMethodsForEmail)।
         try {
           await auth.signInWithCredential(err.credential);
           // এই path-এ window.location.reload()-এর কারণে onLinked() কল করার
