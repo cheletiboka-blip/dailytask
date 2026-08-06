@@ -1,4 +1,4 @@
-const CACHE = "daily-task-v1";
+const CACHE = "daily-task-v2";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 // Analytics/tracking requests must always hit the network directly — never
@@ -53,7 +53,27 @@ self.addEventListener("fetch", (e) => {
           }
           return res;
         })
-        .catch(() => cached);
+        .catch(() => {
+          // C-3 fix: previously this returned `cached`, which is
+          // `undefined` on a cache miss. Passing `undefined` (or any
+          // non-Response value) to respondWith() makes the browser treat
+          // the request as a hard network error — visible to users as
+          // Chrome's net::ERR_FAILED (e.g. the PWA's start_url navigation
+          // hitting a transient network hiccup right at app launch, before
+          // any cache entry exists for it).
+          // Fix: if there's no cached match, fall back to the precached
+          // app shell (./index.html) for navigation requests only — same
+          // key used in the install event's ASSETS list — so the app
+          // still opens instead of showing ERR_FAILED. For any other
+          // asset (script/css/image) that's neither cached nor fetchable,
+          // return an explicit empty Response instead of undefined, so
+          // respondWith() always receives a valid Response.
+          if (cached) return cached;
+          if (e.request.mode === "navigate") {
+            return caches.match("./index.html");
+          }
+          return new Response("", { status: 503, statusText: "Offline" });
+        });
       return cached || fetchPromise;
     })
   );
