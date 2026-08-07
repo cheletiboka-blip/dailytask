@@ -1896,19 +1896,47 @@ function fieldPercent(field, monthEntries, totalDays, member) {
     for (let d = 1; d <= totalDays; d++) {
       const e = monthEntries[pad2(d)];
       if (excusableHere && isExcused(e, field.key)) continue;
-      const capped = Math.min(field.max, Number(e?.[field.key]) || 0);
-      // fardPrayers-এর জন্য ইনভার্টেড — dailyScore-এর মতো একই কারণে।
-      sum += field.key === "fardPrayers" ? field.max - capped : capped;
+      // BUG FIX: fardPrayers-এর জন্য ইনভার্টেড স্কোরিং হওয়ায় আগে একটি খালি
+      // (কোনো এন্ট্রি নেই এমন) দিনকে "০টি কাযা" ধরে নেওয়া হতো, যা ইনভার্শনের
+      // পর "সর্বোচ্চ স্কোর" (৫/৫, অর্থাৎ পুরোপুরি সময়মতো পড়া) হিসেবে গণনা
+      // হয়ে যাচ্ছিল — অথচ ওই দিনের কোনো তথ্যই সেভ করা হয়নি। ফাংশনের বাকি
+      // সব ফিল্ডে "খালি দিন = ০ ক্রেডিট" নিয়ম মানা হয় (bool/number শাখায়
+      // `if (!e) continue;` দিয়ে); শুধু fardPrayers-এই এই নিয়ম উল্টে গিয়ে
+      // "খালি দিন = পূর্ণ ক্রেডিট" হয়ে যাচ্ছিল, যা মাসিক ওভারভিউ ও প্রিন্ট
+      // PDF-এর "ফরজ কাযা"-র শতাংশকে কৃত্রিমভাবে বাড়িয়ে দেখাচ্ছিল, বিশেষত
+      // যেসব মাসে অনেক দিন পূরণ করা হয়নি। এখন খালি দিনকে বাকি সব ফিল্ডের
+      // মতোই "০ ক্রেডিট" হিসেবে গণনা করা হচ্ছে।
+      if (field.key === "fardPrayers") {
+        const hasValue = e && e[field.key] !== undefined && e[field.key] !== "";
+        if (hasValue) {
+          const capped = Math.min(field.max, Number(e[field.key]) || 0);
+          sum += field.max - capped;
+        }
+        // খালি দিন হলে কিছুই যোগ হবে না (০ ক্রেডিট) — বাকি ফিল্ডগুলোর
+        // আচরণের সাথে সামঞ্জস্যপূর্ণ।
+      } else {
+        const capped = Math.min(field.max, Number(e?.[field.key]) || 0);
+        sum += capped;
+      }
     }
     return Math.round(sum / (effectiveDays * field.max) * 100);
   }
   if (field.type === "number" && field.target) {
+    // BUG FIX: এই শাখায় আগে excused দিনগুলো বাদ দেওয়া হতো না (উপরের
+    // excusedDays গণনা করা সত্ত্বেও ব্যবহৃত হতো না) এবং ভাজক হিসেবে সবসময়
+    // totalDays ব্যবহৃত হতো, effectiveDays নয় — যদিও ফাংশনের বাকি সব শাখা
+    // effectiveDays ব্যবহার করে। বর্তমান ডিফল্ট ফিল্ডগুলোর মধ্যে "quranPages"
+    // (একমাত্র number+target ফিল্ড) excusable নয় বলে এতদিন এটি কোনো
+    // দৃশ্যমান পার্থক্য তৈরি করেনি (effectiveDays == totalDays সবসময়), কিন্তু
+    // ভবিষ্যতে কোনো excusable number+target ফিল্ড যোগ হলে এই অসামঞ্জস্য
+    // ভুল শতাংশ দেখাত। এখন বাকি শাখাগুলোর সাথে সামঞ্জস্যপূর্ণ করা হলো।
     let sum = 0;
     for (let d = 1; d <= totalDays; d++) {
       const e = monthEntries[pad2(d)];
+      if (excusableHere && isExcused(e, field.key)) continue;
       sum += Math.min(field.target, Number(e?.[field.key]) || 0);
     }
-    return Math.round(sum / (totalDays * field.target) * 100);
+    return Math.round(sum / (effectiveDays * field.target) * 100);
   }
   for (let d = 1; d <= totalDays; d++) {
     const e = monthEntries[pad2(d)];
@@ -2589,14 +2617,22 @@ function App() {
     });
   }, [selectedId, viewDate]);
 
-  // Live-synced month entries: instead of a single collection-wide range
-  // query (which can silently return nothing if the Firestore rules don't
-  // permit listing/querying the collection, even though reading/writing an
-  // individual day's document works fine), we subscribe to each day's own
-  // document directly — the same access pattern already used successfully
-  // for saving/loading a single day's entry. This way the calendar (and
-  // the PDF, which reads this same state) always reflects the latest saved
-  // data without requiring a manual refresh.
+  // Live-synced month entries: a single collection-scoped range query on
+  // documentId() (entry:<memberId>:<YYYY-MM>-*) replaces what used to be
+  // one onSnapshot listener PER DAY of the month (up to 31 simultaneous
+  // listeners for a single member/month, re-opened on every member/month
+  // switch). The original per-day approach existed because of a concern
+  // that Firestore rules might silently block list/range queries on this
+  // collection — that concern was investigated against the live production
+  // rules (Audit Round #01, item [#1]) and closed as a false alarm: the
+  // current rules (`allow read: if request.auth != null && ...`, no
+  // resource.data reference) permit both get() and list()/query() the same
+  // way. Collapsing 31 listeners into 1 meaningfully cuts daily Firestore
+  // read-quota usage on the Spark (free) plan as more family members join
+  // and use the app simultaneously — each open calendar view now costs one
+  // listener instead of up to 31, and reads only the days that actually
+  // have a saved entry (no doc = no read), instead of always issuing 31
+  // reads whether or not a day was ever filled in.
   useEffect(() => {
     if (!selectedId) {
       setMonthEntries({});
@@ -2604,32 +2640,25 @@ function App() {
     }
     const year = monthCursor.year;
     const month0 = monthCursor.month0;
-    const total = daysInMonth(year, month0);
+    const prefix = `entry:${selectedId}:${year}-${pad2(month0 + 1)}-`;
     const colRef = db.collection(getCollectionName());
-    const liveData = {};
-    const unsubscribers = [];
-    for (let d = 1; d <= total; d++) {
-      const dayStr = pad2(d);
-      const docId = `entry:${selectedId}:${year}-${pad2(month0 + 1)}-${dayStr}`;
-      const unsub = colRef.doc(docId).onSnapshot(doc => {
-        if (doc.exists) {
-          try {
-            liveData[dayStr] = JSON.parse(doc.data().value);
-          } catch {
-            delete liveData[dayStr];
-          }
-        } else {
-          delete liveData[dayStr];
+    const q = colRef
+      .where(firebase.firestore.FieldPath.documentId(), ">=", prefix)
+      .where(firebase.firestore.FieldPath.documentId(), "<", prefix + "\uf8ff");
+    const unsub = q.onSnapshot(snap => {
+      const liveData = {};
+      snap.docs.forEach(doc => {
+        const dayStr = doc.id.slice(prefix.length);
+        try {
+          liveData[dayStr] = JSON.parse(doc.data().value);
+        } catch {
+          // Skip a malformed single entry rather than break the whole
+          // month's view over one bad document.
         }
-        setMonthEntries({
-          ...liveData
-        });
-      }, () => {});
-      unsubscribers.push(unsub);
-    }
-    return () => {
-      unsubscribers.forEach(u => u());
-    };
+      });
+      setMonthEntries(liveData);
+    }, () => {});
+    return () => unsub();
   }, [selectedId, monthCursor, monthRefreshKey]);
   const refreshWeekly = useCallback(() => {
     if (!selectedId) return;
