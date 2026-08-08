@@ -127,6 +127,53 @@ async function ensureFamilyCodeMapping() {
     // Best-effort — future-migration prep, app boot কখনো এর জন্য আটকাবে না।
   }
 }
+// families/<familyId> ডকুমেন্টই family-এর "root/meta" ডকুমেন্ট হিসেবে
+// কাজ করবে (design doc-এর "families/<familyId>/meta" ধারণার একটি ছোট,
+// সরলীকৃত বাস্তবায়ন — future members/entries subcollection এই একই
+// root doc-এর নিচে নেস্ট হবে)। এই মুহূর্তে এটি শুধু background prep;
+// কোনো UI feature এখনো এর ওপর নির্ভর করে না।
+function familyDocRef() {
+  return db.collection("families").doc(getFamilyId());
+}
+async function ensureFamilyMeta() {
+  try {
+    const ref = familyDocRef();
+    const snap = await ref.get();
+    if (!snap.exists) {
+      await ref.set({
+        familyId: getFamilyId(),
+        familyCode: getFamilyCode(),
+        isCustomCode: localStorage.getItem("family_code_is_custom") === "1",
+        createdAt: Date.now(),
+        createdByUid: auth.currentUser ? auth.currentUser.uid : null,
+        schemaVersion: 1,
+        adminUids: []
+      });
+    }
+  } catch {
+    // Best-effort — future-migration prep।
+  }
+}
+// প্রথম Admin claim — ডিজাইন অনুযায়ী শুধু দুটি ট্রিগারে ডাকা হবে:
+// (১) কেউ custom Family Code সেট করলে, (২) কেউ Google Sign-in link করলে।
+// এই দুটির মধ্যে যে uid প্রথমে claim করে, সে-ই প্রথম Admin হবে —
+// "প্রথম-আসা" নিয়মটি Firestore Rules-এ server-side enforced (adminUids
+// ফাঁকা থাকলেই কেবল লেখা গৃহীত হয়), শুধু client-side check নয়।
+async function claimFirstAdminIfEligible() {
+  if (!auth.currentUser) return;
+  try {
+    await ensureFamilyMeta();
+    const ref = familyDocRef();
+    const snap = await ref.get();
+    const current = snap.exists ? snap.data().adminUids || [] : [];
+    if (current.length === 0) {
+      await ref.update({ adminUids: [auth.currentUser.uid], updatedAt: Date.now() });
+    }
+  } catch {
+    // Best-effort — Admin claim ব্যর্থ হলেও মূল ফিচার (Family Code set /
+    // Google link) কখনো ব্লক হবে না; পরের trigger-এ আবার চেষ্টা হবে।
+  }
+}
 // --- users/{uid} <-> familyCode mapping (Google-account-based recovery) ---
 // ছোট, ঐচ্ছিক কালেকশন — Google-linked uid-কে familyCode-এর সাথে যুক্ত রাখে
 // যাতে নতুন ডিভাইসে বা cache-clear-এর পরও শুধু Google sign-in করলেই সঠিক
@@ -2529,6 +2576,7 @@ function App() {
       await syncFamilyCodeWithAccount();
       // Phase A prep — non-blocking, best-effort; app boot এর জন্য অপেক্ষা করে না।
       ensureFamilyCodeMapping();
+      ensureFamilyMeta();
       const m = await migrateMembersIfNeeded();
       setMembers(m);
       // Fires once per app load (not per re-render) so the Analytics
@@ -2984,6 +3032,11 @@ function App() {
       const proceedAnyway = window.confirm("নেটওয়ার্ক বা সার্ভার সমস্যার কারণে এই কোডে আগে থেকে কোনো ডাটা আছে কিনা তা যাচাই করা যায়নি। তবুও কি এই কোডে পরিবর্তন করে এগিয়ে যেতে চান?");
       if (!proceedAnyway) return;
     }
+    // Phase A: প্রথম Admin claim — familyId অপরিবর্তিত থাকে (শুধু code
+    // বদলাচ্ছে), তাই code বদলানোর *আগেই* বর্তমান family-এর জন্য claim
+    // চেষ্টা করা হচ্ছে। ব্যর্থ হলেও (best-effort) Family Code set flow
+    // কখনো আটকাবে না।
+    await claimFirstAdminIfEligible();
     setFamilyCode(code);
   }
   function handleGoToArchive() {
@@ -5079,6 +5132,12 @@ function GoogleAccountModal({
         window.location.reload();
         return;
       }
+      // Phase A: প্রথম Admin claim — শুধু non-switched case-এ (অর্থাৎ এই
+      // ডিভাইস তার নিজের বর্তমান family-তেই Google link করছে)। switched
+      // case-এ (অন্য ডিভাইস থেকে আগে link করা account, ভিন্ন family)
+      // ইচ্ছাকৃতভাবে claim করা হচ্ছে না — সেই family-এর Admin status
+      // ইতিমধ্যে নির্ধারিত থাকার কথা, ভুলভাবে নতুন claim এড়াতে।
+      await claimFirstAdminIfEligible();
       onClose();
       // সাইন-ইন সফল — এই Google অ্যাকাউন্টে আগে থেকে কোনো Drive ব্যাকআপ
       // থাকলে detect করে Restore-এর Popup দেখানোর সুযোগ App-কে দেওয়া হচ্ছে।
